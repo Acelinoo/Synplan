@@ -5,6 +5,7 @@ import {
   ContextResolutionSource,
   RecentEntities,
   EntityType,
+  AiConversationState,
 } from "./types";
 import {
   resolveWorkspaceProject,
@@ -12,6 +13,10 @@ import {
   resolveWorkspacePhase,
   resolveWorkspaceMember,
 } from "./entityResolver";
+import {
+  isConversationContextFresh,
+  sanitizeConversationState,
+} from "./conversationStore";
 
 // ============================================================================
 // 1. CONTEXT SANITIZATION & STALE CONTEXT VALIDATION
@@ -23,6 +28,11 @@ import {
  */
 export function validateAndSanitizeContext(context: AiExecutionContext): AiExecutionContext {
   const sanitized: AiExecutionContext = { ...context };
+
+  // Sanitize conversationState if present
+  if (sanitized.conversationState) {
+    sanitized.conversationState = sanitizeConversationState(sanitized.conversationState, sanitized);
+  }
 
   // Validate currentProjectId
   if (sanitized.currentProjectId) {
@@ -93,26 +103,121 @@ export function validateAndSanitizeContext(context: AiExecutionContext): AiExecu
 }
 
 // ============================================================================
-// 2. CONVERSATIONAL ENTITY EXTRACTION
+// 2. CONVERSATIONAL ENTITY & REFERENCE HELPERS
 // ============================================================================
 
 /**
- * Scans conversation history to identify recently referenced projects, tasks, phases, and members.
+ * Checks if a string is a pronoun or conversational reference to a recently discussed entity.
+ */
+export function isPronounOrRelativeReference(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return (
+    t === "itu" ||
+    t === "ini" ||
+    t === "tersebut" ||
+    t === "tadi" ||
+    t === "barusan" ||
+    t === "yang tadi" ||
+    t === "yang barusan" ||
+    t === "yang baru saja" ||
+    t === "yang baru dibuat" ||
+    t === "yang barusan dibuat" ||
+    t === "yang baru diubah" ||
+    t === "yang barusan diubah" ||
+    t === "task itu" ||
+    t === "task tadi" ||
+    t === "task tersebut" ||
+    t === "tugas itu" ||
+    t === "tugas tadi" ||
+    t === "tugas tersebut" ||
+    t === "project itu" ||
+    t === "project tadi" ||
+    t === "project tersebut" ||
+    t === "projek itu" ||
+    t === "projek tadi" ||
+    t === "fase itu" ||
+    t === "fase tadi" ||
+    t === "fase tersebut" ||
+    t === "phase itu" ||
+    t === "phase tadi" ||
+    t === "phase tersebut" ||
+    t === "anggota itu" ||
+    t === "member itu" ||
+    t === "dia"
+  );
+}
+
+/**
+ * Extracts 0-based positional index from natural language (e.g. "task pertama" -> 0, "terakhir" -> "LAST")
+ */
+export function extractPositionalIndex(text: string): number | "LAST" | null {
+  const t = text.toLowerCase().trim();
+  if (t.includes("pertama") || t.includes("kesatu") || t.includes("ke-1") || t.includes("1st") || t.includes("first")) return 0;
+  if (t.includes("kedua") || t.includes("ke-2") || t.includes("2nd") || t.includes("second")) return 1;
+  if (t.includes("ketiga") || t.includes("ke-3") || t.includes("3rd") || t.includes("third")) return 2;
+  if (t.includes("keempat") || t.includes("ke-4") || t.includes("4th")) return 3;
+  if (t.includes("kelima") || t.includes("ke-5") || t.includes("5th")) return 4;
+  if (
+    t.includes("terakhir") ||
+    t.includes("paling akhir") ||
+    t.includes("sebelumnya") ||
+    t.includes("yang terakhir") ||
+    t.includes("yang sebelumnya") ||
+    t.includes("last") ||
+    t.includes("previous")
+  ) {
+    return "LAST";
+  }
+  return null;
+}
+
+/**
+ * Scans conversation state and history to identify recently referenced projects, tasks, phases, and members.
  */
 export function extractRecentEntitiesFromHistory(
   history: AiExecutionContext["conversationHistory"] | undefined,
   context: AiExecutionContext
 ): RecentEntities {
-  if (!history || history.length === 0) {
-    return context.recentEntities || {};
-  }
-
   const recent: RecentEntities = {
     projects: [...(context.recentEntities?.projects || [])],
     phases: [...(context.recentEntities?.phases || [])],
     tasks: [...(context.recentEntities?.tasks || [])],
     members: [...(context.recentEntities?.members || [])],
   };
+
+  // Merge from context.conversationState if available
+  if (context.conversationState) {
+    const cs = context.conversationState;
+    if (cs.activeEntity) {
+      if (cs.activeEntity.type === "PROJECT" && !recent.projects!.includes(cs.activeEntity.id)) {
+        recent.projects!.unshift(cs.activeEntity.id);
+      } else if (cs.activeEntity.type === "TASK" && !recent.tasks!.includes(cs.activeEntity.id)) {
+        recent.tasks!.unshift(cs.activeEntity.id);
+      } else if (cs.activeEntity.type === "PHASE" && !recent.phases!.includes(cs.activeEntity.id)) {
+        recent.phases!.unshift(cs.activeEntity.id);
+      } else if (cs.activeEntity.type === "MEMBER" && !recent.members!.includes(cs.activeEntity.id)) {
+        recent.members!.unshift(cs.activeEntity.id);
+      }
+    }
+
+    // Merge recentEntities lists
+    for (const p of cs.recentEntities?.projects || []) {
+      if (!recent.projects!.includes(p.id)) recent.projects!.push(p.id);
+    }
+    for (const t of cs.recentEntities?.tasks || []) {
+      if (!recent.tasks!.includes(t.id)) recent.tasks!.push(t.id);
+    }
+    for (const ph of cs.recentEntities?.phases || []) {
+      if (!recent.phases!.includes(ph.id)) recent.phases!.push(ph.id);
+    }
+    for (const m of cs.recentEntities?.members || []) {
+      if (!recent.members!.includes(m.id)) recent.members!.push(m.id);
+    }
+  }
+
+  if (!history || history.length === 0) {
+    return recent;
+  }
 
   // Inspect recent turns from newest to oldest
   const recentTurns = [...history].reverse().slice(0, 8);
@@ -158,9 +263,9 @@ export function extractRecentEntitiesFromHistory(
 
 /**
  * Resolves project using strict precedence:
- * 1. Explicit user input / name
+ * 1. Explicit user input / name / pronoun / positional
  * 2. Active UI context (currentProjectId)
- * 3. Recent conversation context
+ * 3. Recent conversation state / context
  * 4. Safe default (if workspace has exactly 1 project)
  * 5. Clarification / Missing
  */
@@ -173,8 +278,9 @@ export function resolveContextualProject(
   // 1. Explicit User Input
   if (explicitInput && explicitInput.trim()) {
     const clean = explicitInput.trim();
-    // Contextual phrases
     const cleanLower = clean.toLowerCase();
+
+    // 1.1 Contextual UI phrases ("project ini", "projek ini")
     if (
       cleanLower === "project ini" ||
       cleanLower === "projek ini" ||
@@ -196,6 +302,88 @@ export function resolveContextualProject(
             status: "EXACT_MATCH",
             isAmbiguous: false,
             candidates: [active.name],
+          };
+        }
+      }
+    }
+
+    // 1.2 Positional or Pronoun reference from Conversation State
+    const pos = extractPositionalIndex(clean);
+    if (pos !== null) {
+      const cs = context.conversationState;
+      if (cs) {
+        const recentProjs = cs.recentEntities?.projects || [];
+        if (recentProjs.length > 0) {
+          const targetRef = pos === "LAST" ? recentProjs[recentProjs.length - 1] : recentProjs[pos];
+          if (targetRef) {
+            const p = context.projects.find((pr) => pr.id === targetRef.id);
+            if (p) {
+              return {
+                entity: p,
+                entityType: "PROJECT",
+                entityId: p.id,
+                entityName: p.name,
+                source: "CONVERSATION",
+                confidence: "RECENT_EXACT",
+                confidenceScore: 0.9,
+                status: "EXACT_MATCH",
+                isAmbiguous: false,
+                candidates: [p.name],
+              };
+            }
+          }
+        }
+      }
+    } else if (isPronounOrRelativeReference(clean)) {
+      const cs = context.conversationState;
+      if (cs) {
+        // Direct active project in conversation
+        if (cs.activeEntity?.type === "PROJECT") {
+          const activeProj = context.projects.find((p) => p.id === cs.activeEntity!.id);
+          if (activeProj) {
+            return {
+              entity: activeProj,
+              entityType: "PROJECT",
+              entityId: activeProj.id,
+              entityName: activeProj.name,
+              source: "CONVERSATION",
+              confidence: "RECENT_EXACT",
+              confidenceScore: 0.92,
+              status: "EXACT_MATCH",
+              isAmbiguous: false,
+              candidates: [activeProj.name],
+            };
+          }
+        }
+
+        const recentProjs = cs.recentEntities?.projects || [];
+        if (recentProjs.length === 1) {
+          const p = context.projects.find((pr) => pr.id === recentProjs[0].id);
+          if (p) {
+            return {
+              entity: p,
+              entityType: "PROJECT",
+              entityId: p.id,
+              entityName: p.name,
+              source: "CONVERSATION",
+              confidence: "RECENT_EXACT",
+              confidenceScore: 0.9,
+              status: "EXACT_MATCH",
+              isAmbiguous: false,
+              candidates: [p.name],
+            };
+          }
+        } else if (recentProjs.length > 1) {
+          const cNames = recentProjs.map((l) => l.name);
+          return {
+            entityType: "PROJECT",
+            source: "CONVERSATION",
+            confidence: "AMBIGUOUS",
+            confidenceScore: 0.5,
+            status: "AMBIGUOUS",
+            isAmbiguous: true,
+            candidates: cNames,
+            clarificationPrompt: `Project mana yang dimaksud?\n\n${cNames.map((n, i) => `${i + 1}. ${n}`).join("\n")}`,
           };
         }
       }
@@ -250,7 +438,25 @@ export function resolveContextualProject(
     }
   }
 
-  // 3. Conversation Context (Recent Entities)
+  // 3. Conversation Context (Conversation State & Recent Entities)
+  if (context.conversationState?.activeEntity?.type === "PROJECT") {
+    const activeProj = context.projects.find((p) => p.id === context.conversationState!.activeEntity!.id);
+    if (activeProj) {
+      return {
+        entity: activeProj,
+        entityType: "PROJECT",
+        entityId: activeProj.id,
+        entityName: activeProj.name,
+        source: "CONVERSATION",
+        confidence: "RECENT_EXACT",
+        confidenceScore: 0.9,
+        status: "EXACT_MATCH",
+        isAmbiguous: false,
+        candidates: [activeProj.name],
+      };
+    }
+  }
+
   const recent = extractRecentEntitiesFromHistory(context.conversationHistory, context);
   if (recent.projects && recent.projects.length === 1) {
     const recentProj = context.projects.find((p) => p.id === recent.projects![0]);
@@ -319,7 +525,7 @@ export function resolveContextualProject(
 
 /**
  * Resolves phase using strict precedence:
- * 1. Explicit user input / name
+ * 1. Explicit user input / name / pronoun / positional
  * 2. Active UI context (currentPhaseId)
  * 3. Recent conversation context
  * 4. Safe default (first phase of target project)
@@ -337,8 +543,55 @@ export function resolveContextualPhase(
   // 1. Explicit User Input
   if (explicitInput && explicitInput.trim()) {
     const clean = explicitInput.trim();
-    const res = resolveWorkspacePhase(clean, context, targetProjId);
 
+    // 1.1 Pronoun or Positional reference from Conversation State
+    if (isPronounOrRelativeReference(clean) || extractPositionalIndex(clean) !== null) {
+      const cs = context.conversationState;
+      if (cs) {
+        if (cs.activeEntity?.type === "PHASE") {
+          const actPh = phasePool.find((ph) => ph.id === cs.activeEntity!.id);
+          if (actPh) {
+            return {
+              entity: actPh,
+              entityType: "PHASE",
+              entityId: actPh.id,
+              entityName: actPh.name,
+              source: "CONVERSATION",
+              confidence: "RECENT_EXACT",
+              confidenceScore: 0.92,
+              status: "EXACT_MATCH",
+              isAmbiguous: false,
+              candidates: [actPh.name],
+            };
+          }
+        }
+
+        const pos = extractPositionalIndex(clean);
+        const recentPhs = cs.recentEntities?.phases || [];
+        if (recentPhs.length > 0) {
+          const targetRef = pos === "LAST" ? recentPhs[recentPhs.length - 1] : pos !== null ? recentPhs[pos] : recentPhs.length === 1 ? recentPhs[0] : null;
+          if (targetRef) {
+            const ph = phasePool.find((p) => p.id === targetRef.id);
+            if (ph) {
+              return {
+                entity: ph,
+                entityType: "PHASE",
+                entityId: ph.id,
+                entityName: ph.name,
+                source: "CONVERSATION",
+                confidence: "RECENT_EXACT",
+                confidenceScore: 0.9,
+                status: "EXACT_MATCH",
+                isAmbiguous: false,
+                candidates: [ph.name],
+              };
+            }
+          }
+        }
+      }
+    }
+
+    const res = resolveWorkspacePhase(clean, context, targetProjId);
     if (res.isAmbiguous) {
       return {
         entityType: "PHASE",
@@ -387,6 +640,24 @@ export function resolveContextualPhase(
   }
 
   // 3. Conversation Context
+  if (context.conversationState?.activeEntity?.type === "PHASE") {
+    const actPh = phasePool.find((ph) => ph.id === context.conversationState!.activeEntity!.id);
+    if (actPh) {
+      return {
+        entity: actPh,
+        entityType: "PHASE",
+        entityId: actPh.id,
+        entityName: actPh.name,
+        source: "CONVERSATION",
+        confidence: "RECENT_EXACT",
+        confidenceScore: 0.9,
+        status: "EXACT_MATCH",
+        isAmbiguous: false,
+        candidates: [actPh.name],
+      };
+    }
+  }
+
   const recent = extractRecentEntitiesFromHistory(context.conversationHistory, context);
   if (recent.phases && recent.phases.length === 1) {
     const recentPhase = phasePool.find((ph) => ph.id === recent.phases![0]);
@@ -441,9 +712,9 @@ export function resolveContextualPhase(
 
 /**
  * Resolves task using strict precedence:
- * 1. Explicit user input / title
+ * 1. Explicit user input / title / pronoun / positional
  * 2. Active UI context (currentTaskId)
- * 3. Recent conversation context
+ * 3. Recent conversation state / context
  * 4. Clarification when ambiguous or missing
  */
 export function resolveContextualTask(
@@ -459,7 +730,7 @@ export function resolveContextualTask(
     const clean = explicitInput.trim();
     const cleanLower = clean.toLowerCase();
 
-    // Contextual references: "task ini", "tugas ini", "current task", "ini"
+    // 1.1 Contextual references: "task ini", "tugas ini", "current task", "ini"
     if (cleanLower === "task ini" || cleanLower === "tugas ini" || cleanLower === "current task" || cleanLower === "ini") {
       if (context.currentTaskId) {
         const active = context.tasks.find((t) => t.id === context.currentTaskId);
@@ -479,6 +750,24 @@ export function resolveContextualTask(
         }
       }
 
+      if (context.conversationState?.activeEntity?.type === "TASK") {
+        const activeTask = context.tasks.find((t) => t.id === context.conversationState!.activeEntity!.id);
+        if (activeTask && (!targetProjId || activeTask.projectId === targetProjId)) {
+          return {
+            entity: activeTask,
+            entityType: "TASK",
+            entityId: activeTask.id,
+            entityName: activeTask.title,
+            source: "CONVERSATION",
+            confidence: "RECENT_EXACT",
+            confidenceScore: 0.95,
+            status: "EXACT_MATCH",
+            isAmbiguous: false,
+            candidates: [activeTask.title],
+          };
+        }
+      }
+
       const recent = extractRecentEntitiesFromHistory(context.conversationHistory, context);
       if (recent.tasks && recent.tasks.length === 1) {
         const recentTask = context.tasks.find((t) => t.id === recent.tasks![0]);
@@ -494,6 +783,87 @@ export function resolveContextualTask(
             status: "EXACT_MATCH",
             isAmbiguous: false,
             candidates: [recentTask.title],
+          };
+        }
+      }
+    }
+
+    // 1.2 Positional or Pronoun reference from Conversation State ("task itu", "yang tadi", "task pertama")
+    const pos = extractPositionalIndex(clean);
+    if (pos !== null) {
+      const cs = context.conversationState;
+      if (cs) {
+        const recentTasks = (cs.recentEntities?.tasks || []).filter((t) => !targetProjId || t.projectId === targetProjId);
+        if (recentTasks.length > 0) {
+          const targetRef = pos === "LAST" ? recentTasks[recentTasks.length - 1] : recentTasks[pos];
+          if (targetRef) {
+            const t = context.tasks.find((tk) => tk.id === targetRef.id);
+            if (t) {
+              return {
+                entity: t,
+                entityType: "TASK",
+                entityId: t.id,
+                entityName: t.title,
+                source: "CONVERSATION",
+                confidence: "RECENT_EXACT",
+                confidenceScore: 0.9,
+                status: "EXACT_MATCH",
+                isAmbiguous: false,
+                candidates: [t.title],
+              };
+            }
+          }
+        }
+      }
+    } else if (isPronounOrRelativeReference(clean)) {
+      const cs = context.conversationState;
+      if (cs) {
+        if (cs.activeEntity?.type === "TASK") {
+          const actTask = context.tasks.find((t) => t.id === cs.activeEntity!.id);
+          if (actTask && (!targetProjId || actTask.projectId === targetProjId)) {
+            return {
+              entity: actTask,
+              entityType: "TASK",
+              entityId: actTask.id,
+              entityName: actTask.title,
+              source: "CONVERSATION",
+              confidence: "RECENT_EXACT",
+              confidenceScore: 0.92,
+              status: "EXACT_MATCH",
+              isAmbiguous: false,
+              candidates: [actTask.title],
+            };
+          }
+        }
+
+        const recentTasks = (cs.recentEntities?.tasks || []).filter((t) => !targetProjId || t.projectId === targetProjId);
+        if (recentTasks.length === 1) {
+          const t = context.tasks.find((tk) => tk.id === recentTasks[0].id);
+          if (t) {
+            return {
+              entity: t,
+              entityType: "TASK",
+              entityId: t.id,
+              entityName: t.title,
+              source: "CONVERSATION",
+              confidence: "RECENT_EXACT",
+              confidenceScore: 0.9,
+              status: "EXACT_MATCH",
+              isAmbiguous: false,
+              candidates: [t.title],
+            };
+          }
+        } else if (recentTasks.length > 1) {
+          const cNames = recentTasks.map((l) => l.name);
+          return {
+            entityType: "TASK",
+            source: "CONVERSATION",
+            confidence: "AMBIGUOUS",
+            confidenceScore: 0.5,
+            status: "AMBIGUOUS",
+            isAmbiguous: true,
+            candidates: cNames,
+            clarificationPrompt: `Task mana yang dimaksud?\n\n${cNames.map((n, i) => `${i + 1}. ${n}`).join("\n")}`,
           };
         }
       }
@@ -548,7 +918,25 @@ export function resolveContextualTask(
     }
   }
 
-  // 3. Conversation Context (Recent Entities)
+  // 3. Conversation State (Active Entity or single recent task)
+  if (context.conversationState?.activeEntity?.type === "TASK") {
+    const activeTask = context.tasks.find((t) => t.id === context.conversationState!.activeEntity!.id);
+    if (activeTask && (!targetProjId || activeTask.projectId === targetProjId)) {
+      return {
+        entity: activeTask,
+        entityType: "TASK",
+        entityId: activeTask.id,
+        entityName: activeTask.title,
+        source: "CONVERSATION",
+        confidence: "RECENT_EXACT",
+        confidenceScore: 0.9,
+        status: "EXACT_MATCH",
+        isAmbiguous: false,
+        candidates: [activeTask.title],
+      };
+    }
+  }
+
   const recent = extractRecentEntitiesFromHistory(context.conversationHistory, context);
   if (recent.tasks && recent.tasks.length === 1) {
     const recentTask = context.tasks.find((t) => t.id === recent.tasks![0]);
@@ -587,7 +975,7 @@ export function resolveContextualTask(
 
 /**
  * Resolves member using strict precedence:
- * 1. Explicit user input / name
+ * 1. Explicit user input / name / "saya" / pronoun
  * 2. Active UI context (currentMemberId)
  * 3. Recent conversation context
  * 4. Clarification when ambiguous or missing
@@ -603,7 +991,7 @@ export function resolveContextualMember(
     const clean = explicitInput.trim();
     const cleanLower = clean.toLowerCase();
 
-    // Contextual references: "saya", "me", "myself"
+    // 1.1 Contextual references: "saya", "me", "myself"
     if (cleanLower === "saya" || cleanLower === "me" || cleanLower === "myself" || cleanLower === "diri saya") {
       const currentMember = context.members.find((m) => m.userId === context.userId);
       if (currentMember) {
@@ -619,6 +1007,27 @@ export function resolveContextualMember(
           isAmbiguous: false,
           candidates: [currentMember.name],
         };
+      }
+    }
+
+    // 1.2 Pronoun reference to conversation member
+    if (cleanLower === "dia" || cleanLower === "member itu" || cleanLower === "anggota itu") {
+      if (context.conversationState?.activeEntity?.type === "MEMBER") {
+        const actMem = context.members.find((m) => m.userId === context.conversationState!.activeEntity!.id);
+        if (actMem) {
+          return {
+            entity: actMem,
+            entityType: "MEMBER",
+            entityId: actMem.userId,
+            entityName: actMem.name,
+            source: "CONVERSATION",
+            confidence: "RECENT_EXACT",
+            confidenceScore: 0.9,
+            status: "EXACT_MATCH",
+            isAmbiguous: false,
+            candidates: [actMem.name],
+          };
+        }
       }
     }
 
@@ -672,6 +1081,24 @@ export function resolveContextualMember(
   }
 
   // 3. Conversation Context
+  if (context.conversationState?.activeEntity?.type === "MEMBER") {
+    const activeMem = context.members.find((m) => m.userId === context.conversationState!.activeEntity!.id);
+    if (activeMem) {
+      return {
+        entity: activeMem,
+        entityType: "MEMBER",
+        entityId: activeMem.userId,
+        entityName: activeMem.name,
+        source: "CONVERSATION",
+        confidence: "RECENT_EXACT",
+        confidenceScore: 0.9,
+        status: "EXACT_MATCH",
+        isAmbiguous: false,
+        candidates: [activeMem.name],
+      };
+    }
+  }
+
   const recent = extractRecentEntitiesFromHistory(context.conversationHistory, context);
   if (recent.members && recent.members.length === 1) {
     const recentMember = context.members.find((m) => m.userId === recent.members![0]);

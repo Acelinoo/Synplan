@@ -25,6 +25,14 @@ import {
 } from "./contextResolver";
 import { extractExplicitRequirements } from "./requirementExtractor";
 import { validateStrictProjectPlan } from "./projectPlanValidator";
+import {
+  getLatestExecutionReceipt,
+  generateUndoPlanFromReceipt,
+} from "./receiptStore";
+import {
+  getOrCreateConversationState,
+  recordConversationTurn,
+} from "./conversationStore";
 
 /**
  * Builds the comprehensive System Prompt for Gemini LLM Planner.
@@ -157,8 +165,6 @@ Return ONLY valid JSON matching this schema:
 `;
 }
 
-import { getLatestExecutionReceipt, generateUndoPlanFromReceipt } from "./receiptStore";
-
 /**
  * Formats a clean, structured consolidated preview for compound multi-action plans.
  */
@@ -204,17 +210,39 @@ export async function generateAiPlan(
 ): Promise<AiPlan> {
   const planId = `plan_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const cleanPrompt = prompt.trim();
-  const lowerPrompt = cleanPrompt.toLowerCase();
+  const convState =
+    context.conversationState ||
+    (context.workspaceId && context.userId
+      ? getOrCreateConversationState(context.workspaceId, context.userId, context.conversationId)
+      : undefined);
+
   const enrichedContext: AiExecutionContext = {
     ...context,
+    conversationState: convState,
     conversationHistory: conversationHistory || context.conversationHistory || [],
     pendingClarification: pendingClarification || context.pendingClarification,
+  };
+
+  const recordAndReturn = (plan: AiPlan): AiPlan => {
+    if (enrichedContext.workspaceId && enrichedContext.userId) {
+      recordConversationTurn(
+        enrichedContext.workspaceId,
+        enrichedContext.userId,
+        enrichedContext.conversationId || "conv_default",
+        {
+          userPrompt: prompt,
+          assistantMessage: plan.assistantMessage,
+          plan,
+        }
+      );
+    }
+    return plan;
   };
 
   // 1. Direct Cancellation Interceptor
   const isCancelCommand = /^(?:batal|cancel|batalkan|jangan|tidak jadi|gak jadi|nggak jadi)(?:\s+deh|\s+ya)?$/i.test(cleanPrompt);
   if (isCancelCommand) {
-    return {
+    return recordAndReturn({
       id: planId,
       userPrompt: prompt,
       assistantMessage: "Aksi dibatalkan. Tidak ada perubahan yang dilakukan ke database.",
@@ -227,7 +255,7 @@ export async function generateAiPlan(
       planner: "heuristic",
       provider: "fallback",
       createdAt: new Date().toISOString(),
-    };
+    });
   }
 
   // 2. Direct Scoped Undo / Recovery Interceptor
@@ -235,7 +263,7 @@ export async function generateAiPlan(
   if (isUndoCommand) {
     const latestReceipt = getLatestExecutionReceipt(enrichedContext.workspaceId, enrichedContext.userId);
     if (!latestReceipt) {
-      return {
+      return recordAndReturn({
         id: planId,
         userPrompt: prompt,
         assistantMessage: "Tidak ada riwayat eksekusi sebelumnya yang dapat di-undo pada sesi ini.",
@@ -248,12 +276,12 @@ export async function generateAiPlan(
         planner: "heuristic",
         provider: "fallback",
         createdAt: new Date().toISOString(),
-      };
+      });
     }
 
     const { plan: undoPlan, error } = generateUndoPlanFromReceipt(latestReceipt, enrichedContext);
     if (error || !undoPlan) {
-      return {
+      return recordAndReturn({
         id: planId,
         userPrompt: prompt,
         assistantMessage: error || "Aksi sebelumnya tidak dapat dibatalkan secara otomatis.",
@@ -266,10 +294,10 @@ export async function generateAiPlan(
         planner: "heuristic",
         provider: "fallback",
         createdAt: new Date().toISOString(),
-      };
+      });
     }
 
-    return undoPlan;
+    return recordAndReturn(undoPlan);
   }
 
   // 3. Check if user is directly answering an active Pending Clarification
@@ -289,7 +317,7 @@ export async function generateAiPlan(
     const clarRes = resolveClarificationAnswer(prompt, matchingCandidateObjs);
 
     if (clarRes.isCancelled) {
-      return {
+      return recordAndReturn({
         id: planId,
         userPrompt: prompt,
         assistantMessage: "Aksi dibatalkan. Tidak ada perubahan yang dilakukan.",
@@ -302,7 +330,7 @@ export async function generateAiPlan(
         planner: "heuristic",
         provider: "fallback",
         createdAt: new Date().toISOString(),
-      };
+      });
     }
 
     if (clarRes.resolved && clarRes.selectedEntities.length > 0) {
@@ -350,7 +378,7 @@ export async function generateAiPlan(
       };
 
       const { validatedPlan } = validateAiPlan(plan, enrichedContext);
-      return validatedPlan;
+      return recordAndReturn(validatedPlan);
     }
   }
 
@@ -414,7 +442,7 @@ export async function generateAiPlan(
 
         // Validate and enrich with server-side entity resolution & strict validation
         const { validatedPlan } = validateAiPlan(rawPlan, enrichedContext);
-        return validatedPlan;
+        return recordAndReturn(validatedPlan);
       }
     }
   } catch (err: any) {
@@ -424,11 +452,11 @@ export async function generateAiPlan(
   // 3. FALLBACK PATH: Robust Heuristic NLP Engine (Offline / Degraded Mode)
   const heuristicPlan = parseHeuristicIntent(prompt, enrichedContext, mode);
   const { validatedPlan } = validateAiPlan(heuristicPlan, enrichedContext);
-  return {
+  return recordAndReturn({
     ...validatedPlan,
     planner: "heuristic",
     provider: "fallback",
-  };
+  });
 }
 
 /**
@@ -446,6 +474,124 @@ export function parseHeuristicIntent(
   const actions: AiAction[] = [];
   const warnings: string[] = [];
   let assistantMessage = "";
+
+  // 0. Context Switching ("sekarang project Bakery", "pindah ke project Mobile App")
+  const isContextSwitch =
+    lower.startsWith("sekarang project ") ||
+    lower.startsWith("sekarang projek ") ||
+    lower.startsWith("pindah ke project ") ||
+    lower.startsWith("pindah ke projek ") ||
+    lower.startsWith("ganti project ke ") ||
+    lower.startsWith("ganti projek ke ");
+
+  if (isContextSwitch) {
+    const targetProjName = cleanPrompt.replace(/^(?:sekarang|pindah ke|ganti)\s+(?:project|projek|proyek)\s+(?:ke\s+)?/i, "").trim();
+    const resProj = resolveWorkspaceProject(targetProjName, context);
+    if (resProj.project) {
+      return {
+        id: planId,
+        userPrompt: cleanPrompt,
+        assistantMessage: `Konteks aktif dialihkan ke project **"${resProj.project.name}"**.`,
+        actions: [],
+        status: "READY",
+        requiresConfirmation: false,
+        isDestructive: false,
+        warnings: [],
+        planner: "heuristic",
+        provider: "fallback",
+        createdAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  // 0.1 Context Correction ("eh bukan Sarah, ke Andi", "bukan Sarah tapi Andi", "ganti ke Andi", "ralat deadline jadi 15 September")
+  const isCorrection =
+    lower.startsWith("eh bukan ") ||
+    lower.startsWith("bukan ") ||
+    lower.startsWith("ralat ") ||
+    lower.startsWith("ganti ke ") ||
+    lower.startsWith("eh salah");
+
+  if (isCorrection) {
+    // 0.1.1 Member Correction (e.g. "eh bukan Sarah, ke Andi", "bukan Sarah tapi Andi", "ganti ke Andi")
+    const memberCorrectionMatch = cleanPrompt.match(/(?:eh\s+)?(?:bukan|salah|ganti|ralat).*?(?:ke|tapi|jadikan)\s+([A-Za-z]+)/i);
+    if (memberCorrectionMatch && memberCorrectionMatch[1]) {
+      const targetMemberQuery = memberCorrectionMatch[1].trim();
+      const resMem = resolveContextualMember(targetMemberQuery, context);
+      const resTask = resolveContextualTask(undefined, context, context.currentProjectId);
+
+      if (resMem.isAmbiguous) {
+        return {
+          id: planId,
+          userPrompt: cleanPrompt,
+          assistantMessage: resMem.clarificationPrompt || `Ditemukan beberapa anggota bernama "${targetMemberQuery}".`,
+          actions: [],
+          status: "NEEDS_CLARIFICATION",
+          requiresConfirmation: false,
+          isDestructive: false,
+          warnings: [],
+          needsClarification: true,
+          clarificationsNeeded: [resMem.clarificationPrompt || ""],
+          planner: "heuristic",
+          provider: "fallback",
+          createdAt: new Date().toISOString(),
+        };
+      }
+
+      if (resTask.isAmbiguous) {
+        return {
+          id: planId,
+          userPrompt: cleanPrompt,
+          assistantMessage: resTask.clarificationPrompt || `Terdapat beberapa task aktif yang dapat diperbarui.`,
+          actions: [],
+          status: "NEEDS_CLARIFICATION",
+          requiresConfirmation: false,
+          isDestructive: false,
+          warnings: [],
+          needsClarification: true,
+          clarificationsNeeded: [resTask.clarificationPrompt || ""],
+          planner: "heuristic",
+          provider: "fallback",
+          createdAt: new Date().toISOString(),
+        };
+      }
+
+      const targetTask = resTask.entity;
+      const targetMember = resMem.entity;
+
+      if (targetTask && targetMember) {
+        actions.push({
+          id: `act_${Date.now()}_corr_asgn`,
+          type: "UPDATE_TASK",
+          summary: `Ralat penugasan task "${targetTask.title}" menjadi ${targetMember.name}.`,
+          riskLevel: "MEDIUM",
+          requiredRole: "MEMBER",
+          status: "READY",
+          payload: {
+            taskId: targetTask.id,
+            taskTitle: targetTask.title,
+            projectId: targetTask.projectId || context.currentProjectId,
+            assigneeName: targetMember.name,
+            assigneeId: targetMember.userId,
+          },
+        });
+
+        return {
+          id: planId,
+          userPrompt: cleanPrompt,
+          assistantMessage: `Meralat penugasan task **"${targetTask.title}"** dialihkan kepada **${targetMember.name}**.`,
+          actions,
+          status: "READY",
+          requiresConfirmation: false,
+          isDestructive: false,
+          warnings,
+          planner: "heuristic",
+          provider: "fallback",
+          createdAt: new Date().toISOString(),
+        };
+      }
+    }
+  }
 
   // 1. Create Project Intent
   const isCreateProject =
@@ -1224,23 +1370,32 @@ export function parseHeuristicIntent(
     }
   }
 
-  // 6. Task Move Operation ("pindahkan task homepage ke phase development")
+  // 6. Task Move Operation ("pindahkan task homepage ke phase development", "pindahkan ke phase development")
   const isMoveTask =
     lower.startsWith("pindahkan") || lower.startsWith("move") || lower.includes("pindahkan task") || lower.includes("move task");
 
   if (isMoveTask) {
     if (lower.includes(" ke ") || lower.includes(" ke phase ") || lower.includes(" ke fase ")) {
-      const moveMatch = cleanPrompt.match(/(?:pindahkan|move)\s+(?:task\s+)?([^,\.\n]+?)\s+(?:ke\s+phase|ke\s+fase|ke)\s+([^,\.\n]+)/i);
-      if (moveMatch && moveMatch[1] && moveMatch[2]) {
-        const targetTaskQuery = moveMatch[1].trim();
-        const targetPhaseQuery = moveMatch[2].trim();
+      let targetTaskQuery: string | undefined = undefined;
+      let targetPhaseQuery: string | undefined = undefined;
 
+      const directPhaseMatch = cleanPrompt.match(/^(?:tolong\s+)?(?:pindahkan|move)\s+(?:ke\s+phase|ke\s+fase|ke)\s+([^,\.\n]+)/i);
+      const moveMatch = cleanPrompt.match(/(?:pindahkan|move)\s+(?:task\s+)?([^,\.\n]+?)\s+(?:ke\s+phase|ke\s+fase|ke)\s+([^,\.\n]+)/i);
+
+      if (directPhaseMatch && directPhaseMatch[1]) {
+        targetPhaseQuery = directPhaseMatch[1].trim();
+      } else if (moveMatch && moveMatch[1] && moveMatch[2]) {
+        targetTaskQuery = moveMatch[1].trim();
+        targetPhaseQuery = moveMatch[2].trim();
+      }
+
+      if (targetPhaseQuery) {
         const resTask = resolveContextualTask(targetTaskQuery, context, context.currentProjectId);
         if (resTask.isAmbiguous) {
           return {
             id: planId,
             userPrompt: cleanPrompt,
-            assistantMessage: resTask.clarificationPrompt || `Terdapat beberapa task bernama "${targetTaskQuery}".`,
+            assistantMessage: resTask.clarificationPrompt || `Terdapat beberapa task aktif yang dapat dipindahkan.`,
             actions: [],
             status: "NEEDS_CLARIFICATION",
             requiresConfirmation: false,
@@ -1435,16 +1590,26 @@ export function parseHeuristicIntent(
   }
 
   // 9. Task Assignment Intent ("assign API Payment Gateway ke Sarah", "assign task ini ke Bob")
+  // 9. Task Assignment Intent ("assign API Payment Gateway ke Sarah", "assign task ini ke Bob", "assign ke Sarah")
   const isAssignTask =
     (lower.startsWith("assign ") || lower.startsWith("tugaskan ") || lower.startsWith("kasih ")) &&
     lower.includes(" ke ");
 
   if (isAssignTask) {
-    const assignMatch = cleanPrompt.match(/(?:assign|tugaskan|kasih)\s+(?:task\s+)?([^,\.\n]+?)\s+ke\s+([A-Za-z]+)/i);
-    if (assignMatch && assignMatch[1] && assignMatch[2]) {
-      const taskQuery = assignMatch[1].trim();
-      const memberQuery = assignMatch[2].trim();
+    let taskQuery: string | undefined = undefined;
+    let memberQuery: string | undefined = undefined;
 
+    const directAssignMatch = cleanPrompt.match(/^(?:tolong\s+)?(?:assign|tugaskan|kasih)\s+ke\s+([A-Za-z]+)/i);
+    const fullAssignMatch = cleanPrompt.match(/(?:assign|tugaskan|kasih)\s+(?:task\s+)?([^,\.\n]+?)\s+ke\s+([A-Za-z]+)/i);
+
+    if (directAssignMatch && directAssignMatch[1]) {
+      memberQuery = directAssignMatch[1].trim();
+    } else if (fullAssignMatch && fullAssignMatch[1] && fullAssignMatch[2]) {
+      taskQuery = fullAssignMatch[1].trim();
+      memberQuery = fullAssignMatch[2].trim();
+    }
+
+    if (memberQuery) {
       const resTask = resolveContextualTask(taskQuery, context, context.currentProjectId);
       const resMem = resolveContextualMember(memberQuery, context);
 
@@ -1466,13 +1631,31 @@ export function parseHeuristicIntent(
         };
       }
 
+      if (resTask.isAmbiguous) {
+        return {
+          id: planId,
+          userPrompt: cleanPrompt,
+          assistantMessage: resTask.clarificationPrompt || `Terdapat beberapa task yang cocok.`,
+          actions: [],
+          status: "NEEDS_CLARIFICATION",
+          requiresConfirmation: false,
+          isDestructive: false,
+          warnings: [],
+          needsClarification: true,
+          clarificationsNeeded: [resTask.clarificationPrompt || ""],
+          planner: "heuristic",
+          provider: "fallback",
+          createdAt: new Date().toISOString(),
+        };
+      }
+
       const targetTask = resTask.entity;
       const targetMember = resMem.entity;
 
       actions.push({
         id: `act_${Date.now()}_asgn`,
         type: "ASSIGN_TASK",
-        summary: `Tugaskan task "${targetTask?.title || taskQuery}" kepada ${targetMember?.name || memberQuery}.`,
+        summary: `Tugaskan task "${targetTask?.title || taskQuery || "Task"}" kepada ${targetMember?.name || memberQuery}.`,
         riskLevel: "MEDIUM",
         requiredRole: "MEMBER",
         status: "READY",
@@ -1488,7 +1671,7 @@ export function parseHeuristicIntent(
       return {
         id: planId,
         userPrompt: cleanPrompt,
-        assistantMessage: `Menugaskan task **"${targetTask?.title || taskQuery}"** kepada **${targetMember?.name || memberQuery}**.`,
+        assistantMessage: `Menugaskan task **"${targetTask?.title || taskQuery || "Task"}"** kepada **${targetMember?.name || memberQuery}**.`,
         actions,
         status: "READY",
         requiresConfirmation: false,
@@ -1650,9 +1833,13 @@ export function parseHeuristicIntent(
     }
   }
 
-  // 12. Task Deadline Change Intent ("ubah deadline task Desain Homepage jadi 10 September", "ubah deadline jadi besok")
+  // 12. Task Deadline Change Intent ("ubah deadline task Desain Homepage jadi 10 September", "ubah deadline jadi besok", "deadline Jumat")
   const isDeadlineChange =
-    (lower.includes("deadline") || lower.includes("tenggat") || lower.includes("due date")) &&
+    (lower.startsWith("deadline") ||
+      lower.startsWith("tenggat") ||
+      lower.includes("deadline") ||
+      lower.includes("tenggat") ||
+      lower.includes("due date")) &&
     !lower.includes("project") &&
     !lower.includes("projek");
 
@@ -1663,11 +1850,27 @@ export function parseHeuristicIntent(
       .replace(/\s+(?:jadi|ke|menjadi|sampai|tanggal)\s+.*$/i, "")
       .trim();
 
-    const dateMatch = cleanPrompt.match(/(?:jadi|ke|menjadi|sampai|tanggal|deadline)\s+([0-9]{1,2}\s+[A-Za-z]+(?:\s+[0-9]{4})?|[0-9]{4}-[0-9]{2}-[0-9]{2}|besok|lusa|next\s+week|akhir\s+bulan|kemarin|minggu\s+ini|akhir\s+minggu\s+ini)/i);
+    const dateMatch = cleanPrompt.match(/(?:jadi|ke|menjadi|sampai|tanggal|deadline|tenggat)\s*([0-9]{1,2}\s+[A-Za-z]+(?:\s+[0-9]{4})?|[0-9]{4}-[0-9]{2}-[0-9]{2}|besok|lusa|next\s+week|akhir\s+bulan|kemarin|minggu\s+ini|akhir\s+minggu\s+ini|jumat|senin|selasa|rabu|kamis|sabtu|minggu|friday|monday|tuesday|wednesday|thursday|saturday|sunday)/i);
     let newDeadline: string | undefined = undefined;
-    if (dateMatch && dateMatch[1]) {
-      const resolved = resolveNaturalDate(dateMatch[1], context.serverTime);
-      if (resolved) newDeadline = resolved.isoDate;
+
+    const rawDateText = cleanPrompt
+      .replace(/^(?:tolong\s+)?(?:ubah|ganti)?\s*(?:deadline|tenggat|due\s+date)?(?:\s*-nya|\s+nya)?\s*(?:task\s+[^,\.\n]+?)?\s*(?:jadi|ke|menjadi|sampai|tanggal)?\s*/i, "")
+      .trim();
+    let resolvedDate = resolveNaturalDate(rawDateText, context.serverTime);
+    if (!resolvedDate && dateMatch && dateMatch[1]) {
+      resolvedDate = resolveNaturalDate(dateMatch[1], context.serverTime);
+    }
+    if (resolvedDate) {
+      newDeadline = resolvedDate.isoDate;
+    }
+
+    if (
+      taskQuery &&
+      (resolveNaturalDate(taskQuery, context.serverTime) ||
+        taskQuery.toLowerCase() === rawDateText.toLowerCase() ||
+        (dateMatch && taskQuery.toLowerCase().includes(dateMatch[1].toLowerCase())))
+    ) {
+      taskQuery = "";
     }
 
     if (newDeadline) {
@@ -1721,18 +1924,18 @@ export function parseHeuristicIntent(
           createdAt: new Date().toISOString(),
         };
       }
-    } else if (taskQuery && !newDeadline) {
+    } else if (taskQuery || context.currentTaskId) {
       return {
         id: planId,
         userPrompt: cleanPrompt,
-        assistantMessage: `Kapan tenggat waktu (deadline) baru yang Anda inginkan untuk task **"${taskQuery}"**?`,
+        assistantMessage: `Kapan tenggat waktu (deadline) baru yang Anda inginkan untuk task **"${taskQuery || "tersebut"}"**?`,
         actions: [],
         status: "NEEDS_CLARIFICATION",
         requiresConfirmation: false,
         isDestructive: false,
         warnings: [],
         needsClarification: true,
-        clarificationsNeeded: [`Kapan deadline baru untuk task "${taskQuery}"?`],
+        clarificationsNeeded: [`Kapan deadline baru untuk task "${taskQuery || "tersebut"}"?`],
         planner: "heuristic",
         provider: "fallback",
         createdAt: new Date().toISOString(),
@@ -1784,22 +1987,27 @@ export function parseHeuristicIntent(
     }
   }
 
-  // 14. Delete Task Intent ("hapus task QA Regression Testing")
+  // 14. Delete Task Intent ("hapus task QA Regression Testing", "hapus task itu", "hapus itu")
   const isDeleteTask =
     (lower.startsWith("hapus task") ||
       lower.startsWith("delete task") ||
       lower.startsWith("buang task") ||
+      lower === "hapus itu" ||
+      lower === "delete itu" ||
       (lower.includes("hapus") && lower.includes("task"))) &&
     !lower.includes("semua task");
 
   if (isDeleteTask) {
-    const rawTaskName = cleanPrompt.replace(/^(?:tolong\s+)?(?:hapus|delete|buang)\s+task\s*/i, "").trim();
-    const resTask = resolveWorkspaceTask(rawTaskName, context, context.currentProjectId);
+    let rawTaskName: string | undefined = cleanPrompt.replace(/^(?:tolong\s+)?(?:hapus|delete|buang)\s+(?:task\s+)?/i, "").trim();
+    if (rawTaskName === "itu" || rawTaskName === "tadi" || rawTaskName === "tersebut" || rawTaskName === "") {
+      rawTaskName = undefined;
+    }
+    const resTask = resolveContextualTask(rawTaskName, context, context.currentProjectId);
     if (resTask.isAmbiguous) {
       return {
         id: planId,
         userPrompt: cleanPrompt,
-        assistantMessage: resTask.clarificationPrompt || `Terdapat beberapa task yang cocok dengan "${rawTaskName}".`,
+        assistantMessage: resTask.clarificationPrompt || `Terdapat beberapa task yang cocok.`,
         actions: [],
         status: "NEEDS_CLARIFICATION",
         requiresConfirmation: false,
@@ -1812,11 +2020,11 @@ export function parseHeuristicIntent(
           workspaceId: context.workspaceId,
           userId: context.userId,
           entityType: "TASK",
-          query: rawTaskName,
+          query: rawTaskName || "Task",
           originalActionType: "DELETE_TASK",
           candidates: resTask.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resTask.candidates.map((name) => ({ id: name, name })),
           allowMultiSelect: false,
-          message: resTask.clarificationPrompt || `Terdapat beberapa task yang cocok dengan "${rawTaskName}".`,
+          message: resTask.clarificationPrompt || `Terdapat beberapa task yang cocok.`,
           createdAt: new Date().toISOString(),
         },
         planner: "heuristic",
@@ -1825,27 +2033,28 @@ export function parseHeuristicIntent(
       };
     }
 
+    const targetTask = resTask.entity;
     actions.push({
       id: `act_${Date.now()}_deltask`,
       type: "DELETE_TASK",
-      summary: `Hapus task "${resTask.task?.title || rawTaskName}" secara permanen.`,
+      summary: `Hapus task "${targetTask?.title || rawTaskName || "Task"}" secara permanen.`,
       riskLevel: "HIGH",
       requiredRole: "MEMBER",
       status: "NEEDS_CONFIRMATION",
       isDestructive: true,
       requiresConfirmation: true,
       payload: {
-        id: resTask.task?.id,
-        name: resTask.task?.title || rawTaskName,
-        title: resTask.task?.title || rawTaskName,
-        projectId: resTask.task?.projectId || context.currentProjectId,
+        id: targetTask?.id,
+        name: targetTask?.title || rawTaskName || "Task",
+        title: targetTask?.title || rawTaskName || "Task",
+        projectId: targetTask?.projectId || context.currentProjectId,
       },
     });
 
     return {
       id: planId,
       userPrompt: cleanPrompt,
-      assistantMessage: `⚠️ Anda akan menghapus task **"${resTask.task?.title || rawTaskName}"** secara permanen. Tindakan ini memerlukan konfirmasi.`,
+      assistantMessage: `⚠️ Anda akan menghapus task **"${targetTask?.title || rawTaskName || "Task"}"** secara permanen. Tindakan ini memerlukan konfirmasi.`,
       actions,
       status: "NEEDS_CONFIRMATION",
       requiresConfirmation: true,
@@ -1901,7 +2110,7 @@ export function parseHeuristicIntent(
     };
   }
 
-  // 16. Delete Project Intent ("hapus project Website Cafe & Resto")
+  // 16. Delete Project Intent ("hapus project Website Cafe & Resto", "hapus project itu")
   const isDeleteProject =
     (lower.includes("hapus") || lower.includes("delete") || lower.includes("buang")) &&
     (lower.includes("project") || lower.includes("projek") || lower.includes("proyek")) &&
@@ -1910,7 +2119,7 @@ export function parseHeuristicIntent(
 
   if (isDeleteProject) {
     const rawTarget = cleanPrompt.replace(/^(?:tolong\s+)?(?:hapus|delete|buang)\s+(?:project|projek|proyek)\s*/i, "").trim();
-    const resProj = resolveWorkspaceProject(rawTarget, context);
+    const resProj = resolveContextualProject(rawTarget || undefined, context);
 
     if (resProj.isAmbiguous) {
       return {
@@ -1924,44 +2133,53 @@ export function parseHeuristicIntent(
         warnings: [],
         needsClarification: true,
         clarificationsNeeded: [resProj.clarificationPrompt || ""],
-        planner: "heuristic",
-        provider: "fallback",
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    const targetProject = resProj.project || context.projects.find((p) => p.id === context.currentProjectId);
-    if (targetProject) {
-      actions.push({
-        id: `act_${Date.now()}_del`,
-        type: "DELETE_PROJECT",
-        summary: `Hapus project "${targetProject.name}" secara permanen.`,
-        riskLevel: "HIGH",
-        requiredRole: "ADMIN",
-        status: "NEEDS_CONFIRMATION",
-        isDestructive: true,
-        requiresConfirmation: true,
-        payload: {
-          id: targetProject.id,
-          name: targetProject.name,
+        clarificationState: {
+          id: `clar_${Date.now()}`,
+          workspaceId: context.workspaceId,
+          userId: context.userId,
           entityType: "PROJECT",
+          query: rawTarget || "Project",
+          originalActionType: "DELETE_PROJECT",
+          candidates: resProj.candidates.map((name) => ({ id: name, name })),
+          allowMultiSelect: false,
+          message: resProj.clarificationPrompt || `Terdapat beberapa project yang cocok dengan "${rawTarget}".`,
+          createdAt: new Date().toISOString(),
         },
-      });
-
-      return {
-        id: planId,
-        userPrompt: cleanPrompt,
-        assistantMessage: `⚠️ Anda akan menghapus project **"${targetProject.name}"** secara permanen. Tindakan ini memerlukan konfirmasi.`,
-        actions,
-        status: "NEEDS_CONFIRMATION",
-        requiresConfirmation: true,
-        isDestructive: true,
-        warnings: ["Tindakan ini akan menghapus project beserta seluruh task di dalamnya."],
         planner: "heuristic",
         provider: "fallback",
         createdAt: new Date().toISOString(),
       };
     }
+
+    const targetProj = resProj.entity;
+    actions.push({
+      id: `act_${Date.now()}_delproj`,
+      type: "DELETE_PROJECT",
+      summary: `Hapus seluruh project "${targetProj?.name || rawTarget}" beserta seluruh fase dan task di dalamnya secara permanen.`,
+      riskLevel: "CRITICAL",
+      requiredRole: "ADMIN",
+      status: "NEEDS_CONFIRMATION",
+      isDestructive: true,
+      requiresConfirmation: true,
+      payload: {
+        id: targetProj?.id,
+        name: targetProj?.name || rawTarget,
+      },
+    });
+
+    return {
+      id: planId,
+      userPrompt: cleanPrompt,
+      assistantMessage: `⚠️ Anda akan menghapus project **"${targetProj?.name || rawTarget}"** secara permanen beserta seluruh fase dan tugasnya. Tindakan ini memerlukan konfirmasi eksplisit.`,
+      actions,
+      status: "NEEDS_CONFIRMATION",
+      requiresConfirmation: true,
+      isDestructive: true,
+      warnings: ["Seluruh fase, task, dan riwayat project akan dihapus secara permanen."],
+      planner: "heuristic",
+      provider: "fallback",
+      createdAt: new Date().toISOString(),
+    };
   }
 
   // 17. Add Member Intent ("tambahkan Sarah dan Marchelino ke project ini")

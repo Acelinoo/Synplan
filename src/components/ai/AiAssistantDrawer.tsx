@@ -68,6 +68,9 @@ export function AiAssistantDrawer() {
 
   const [activeTab, setActiveTab] = React.useState<"chat" | "history">("chat");
   const [input, setInput] = React.useState("");
+  const [conversationId] = React.useState<string>(
+    () => `conv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+  );
   const [editingPlanId, setEditingPlanId] = React.useState<string | null>(null);
   const [editingParams, setEditingParams] = React.useState<{
     projectName?: string;
@@ -286,6 +289,7 @@ export function AiAssistantDrawer() {
       // 3. Call Plan Generation API (with full UI context, conversational history, and pending clarification)
       const res = await apiClient.generateAiPlan({
         prompt: promptForEngine,
+        conversationId,
         currentProjectId,
         currentTaskId: selectedTaskId || undefined,
         currentView,
@@ -387,6 +391,7 @@ export function AiAssistantDrawer() {
         confirmed,
         confirmationToken: plan.confirmationToken,
         planFingerprint: plan.planFingerprint,
+        conversationId,
       });
 
       if (res.success && res.data) {

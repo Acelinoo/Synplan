@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     const {
       prompt,
       mode,
+      conversationId,
       currentProjectId,
       currentPhaseId,
       currentTaskId,
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
       workspaceId: auth.workspaceId,
       userId: auth.userId,
       userRole: auth.role,
+      conversationId: conversationId || undefined,
       currentProjectId,
       currentPhaseId,
       currentTaskId,

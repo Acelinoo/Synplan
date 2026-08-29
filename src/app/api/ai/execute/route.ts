@@ -4,6 +4,7 @@ import { getAiExecutionContext } from "@/lib/ai/context";
 import { executeAiPlan } from "@/lib/ai/executor";
 import { validateAiPlan } from "@/lib/ai/validator";
 import { validatePendingConfirmation, markConfirmationExecuted } from "@/lib/ai/confirmationStore";
+import { updateConversationState, pushRecentEntity } from "@/lib/ai/conversationStore";
 import { AiPlan } from "@/lib/ai/types";
 import { prisma } from "@/lib/prisma";
 
@@ -161,6 +162,41 @@ export async function POST(req: NextRequest) {
     const effectiveToken = confirmationToken || plan.confirmationToken;
     if (effectiveToken) {
       markConfirmationExecuted(effectiveToken);
+    }
+
+    // 7. Update active and created/modified entities in conversation store
+    if (executionResult.success) {
+      const convId = (body as any).conversationId || "conv_default";
+      const now = new Date().toISOString();
+      for (const res of executionResult.results) {
+        if (!res.success) continue;
+        const matchingAction = validatedPlan.actions.find((a) => a.id === res.actionId);
+        const p = matchingAction?.payload || {};
+
+        if (res.type === "CREATE_PROJECT" || res.type === "UPDATE_PROJECT") {
+          const projId = res.data?.id || p.id || p.projectId;
+          const projName = res.data?.name || p.name || p.projectName;
+          if (projId && projName) {
+            updateConversationState(auth.workspaceId, auth.userId, convId, {
+              activeEntity: { id: projId, type: "PROJECT", name: projName, lastReferencedAt: now },
+              lastCreatedEntity: res.type === "CREATE_PROJECT" ? { id: projId, type: "PROJECT", name: projName, lastReferencedAt: now } : undefined,
+              lastModifiedEntity: res.type === "UPDATE_PROJECT" ? { id: projId, type: "PROJECT", name: projName, lastReferencedAt: now } : undefined,
+            });
+            pushRecentEntity(auth.workspaceId, auth.userId, convId, { id: projId, type: "PROJECT", name: projName, lastReferencedAt: now });
+          }
+        } else if (res.type === "CREATE_TASK" || res.type === "UPDATE_TASK" || res.type === "ASSIGN_TASK") {
+          const taskId = res.data?.id || p.taskId || p.id;
+          const taskTitle = res.data?.title || p.taskTitle || p.title || p.name;
+          if (taskId && taskTitle) {
+            updateConversationState(auth.workspaceId, auth.userId, convId, {
+              activeEntity: { id: taskId, type: "TASK", name: taskTitle, projectId: p.projectId, lastReferencedAt: now },
+              lastCreatedEntity: res.type === "CREATE_TASK" ? { id: taskId, type: "TASK", name: taskTitle, projectId: p.projectId, lastReferencedAt: now } : undefined,
+              lastModifiedEntity: res.type !== "CREATE_TASK" ? { id: taskId, type: "TASK", name: taskTitle, projectId: p.projectId, lastReferencedAt: now } : undefined,
+            });
+            pushRecentEntity(auth.workspaceId, auth.userId, convId, { id: taskId, type: "TASK", name: taskTitle, projectId: p.projectId, lastReferencedAt: now });
+          }
+        }
+      }
     }
 
     return NextResponse.json({

@@ -930,11 +930,14 @@ async function runWorkflowSafetyTests() {
   // --------------------------------------------------------------------------
   section("20. End-to-End Compound Workflow Safety");
   {
-    const compoundPrompt = "buat project website toko buah, phase Development, task Desain Homepage, assign ke Marchel";
+    const compoundPrompt = "buat project website toko buah, phase Development, task Desain Homepage, assign ke Sarah";
     const plan = parseHeuristicIntent(compoundPrompt, MOCK_CONTEXT);
-    const { validatedPlan, isValid } = validateAiPlan(plan, MOCK_CONTEXT);
+    const { validatedPlan, isValid, errors } = validateAiPlan(plan, MOCK_CONTEXT);
+    if (!isValid) {
+      console.log("Cat 20 debug:", { isValid, status: plan.status, errors, actions: plan.actions });
+    }
 
-    assert(isValid === true, "Compound plan is valid");
+    assert(isValid === true, "Compound plan is valid", errors.join(", "));
     assert(validatedPlan.actions.length >= 2, "Compound plan generates multi-action items");
     assert(validatedPlan.requiresConfirmation === true, "Compound multi-action plan requires confirmation");
     assert(validatedPlan.riskLevel !== "LOW", "Plan risk appropriately classified above LOW");

@@ -2,11 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { Role } from "@prisma/client";
 import { AiExecutionContext, RecentEntities } from "./types";
 import { validateAndSanitizeContext, extractRecentEntitiesFromHistory } from "./contextResolver";
+import { getConversationState } from "./conversationStore";
 
 interface GetContextOptions {
   workspaceId: string;
   userId: string;
   userRole?: Role | string;
+  conversationId?: string;
   currentProjectId?: string;
   currentPhaseId?: string;
   currentTaskId?: string;
@@ -27,6 +29,7 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
     workspaceId,
     userId,
     userRole: providedRole,
+    conversationId,
     currentProjectId,
     currentPhaseId,
     currentTaskId,
@@ -146,6 +149,8 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
     currentMemberId,
     currentMemberName,
     currentView,
+    conversationId: conversationId || undefined,
+    conversationState: conversationId ? getConversationState(workspaceId, userId, conversationId) || undefined : undefined,
     recentEntities: providedRecent,
     conversationHistory,
     activePath,

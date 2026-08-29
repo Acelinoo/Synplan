@@ -585,6 +585,7 @@ export const apiClient = {
   async generateAiPlan(params: {
     prompt: string;
     mode?: "STRICT" | "SMART";
+    conversationId?: string;
     currentProjectId?: string;
     currentPhaseId?: string;
     currentTaskId?: string;
@@ -611,6 +612,7 @@ export const apiClient = {
     confirmationToken?: string;
     planFingerprint?: string;
     idempotencyKey?: string;
+    conversationId?: string;
   }) {
     const res = await request<any>("/api/ai/execute", {
       method: "POST",

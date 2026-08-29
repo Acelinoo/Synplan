@@ -411,12 +411,69 @@ export interface RecentEntities {
 
 export const MAX_BATCH_ACTIONS = 50;
 
+export type AiConversationIntentType =
+  | "NEW_INTENT"
+  | "CONTINUATION"
+  | "CORRECTION"
+  | "REFERENCE"
+  | "CANCELLATION"
+  | "CONFIRMATION";
+
+export interface AiConversationEntityRef {
+  type: EntityType;
+  id: string;
+  name: string;
+  projectId?: string;
+  phaseId?: string;
+  lastReferencedAt: string;
+}
+
+export interface AiConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  turnIndex: number;
+  intentType?: AiConversationIntentType;
+  entityReferences?: Array<{ type: EntityType; id: string; name: string }>;
+  planId?: string;
+}
+
+export interface AiConversationState {
+  conversationId: string;
+  workspaceId: string;
+  userId: string;
+  turnIndex: number;
+  lastIntent?: string;
+  lastIntentType?: AiConversationIntentType;
+  lastActionIds?: string[];
+  activeEntity?: AiConversationEntityRef;
+  recentEntities: {
+    projects: AiConversationEntityRef[];
+    tasks: AiConversationEntityRef[];
+    phases: AiConversationEntityRef[];
+    members: AiConversationEntityRef[];
+  };
+  lastCreatedEntity?: AiConversationEntityRef;
+  lastModifiedEntity?: AiConversationEntityRef;
+  pendingConfirmation?: {
+    token: string;
+    planFingerprint: string;
+    planId: string;
+    expiresAt: string;
+  };
+  history: AiConversationTurn[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AiExecutionContext {
   workspaceId: string;
   workspaceName?: string;
   userId: string;
   userName: string;
   userRole?: Role | string;
+  conversationId?: string;
+  conversationState?: AiConversationState;
   currentProjectId?: string;
   currentProjectName?: string;
   currentPhaseId?: string;
