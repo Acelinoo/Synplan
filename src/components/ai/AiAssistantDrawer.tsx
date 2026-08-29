@@ -26,22 +26,33 @@ import {
   Info,
   Check,
 } from "lucide-react";
-import { useAiStore, useWorkspaceStore, useUiStore } from "@/store";
+import { Role } from "@prisma/client";
+import { useAiStore, useWorkspaceStore, useTaskStore, useUiStore } from "@/store";
+import { usePermissions } from "@/hooks/usePermissions";
 import { apiClient } from "@/lib/apiClient";
 import { AiPlan, AiAction, AiExecutionResult, ExecutionReceipt } from "@/lib/ai/types";
+import {
+  getSlashSuggestions,
+  parseSlashCommand,
+  SlashSuggestion,
+  SlashAutocompleteContext,
+} from "@/lib/ai/slash";
+import { SlashCommandAutocomplete } from "./SlashCommandAutocomplete";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const suggestedPrompts = [
-  "Buat project website Cafe ABC, deadline 30 September",
-  "Tambahkan task UI Design dan QA Testing",
-  "Tambahkan Marchel ke tim proyek",
-  "Tugaskan task Desain ke Marchel",
+  "/create project Website Cafe ABC",
+  "/assign task Desain ke Marchel",
+  "/status task Desain Homepage done",
+  "Task apa saja yang belum selesai?",
 ];
 
 export function AiAssistantDrawer() {
   const pathname = usePathname();
-  const { activeWorkspace, projects } = useWorkspaceStore();
+  const { activeWorkspace, projects, members } = useWorkspaceStore();
+  const { tasks } = useTaskStore();
+  const { normalizedRole } = usePermissions();
   const { addToast } = useUiStore();
   const {
     isOpen,
@@ -67,9 +78,122 @@ export function AiAssistantDrawer() {
   const [executionHistory, setExecutionHistory] = React.useState<any[]>([]);
   const [selectedReceiptDetail, setSelectedReceiptDetail] = React.useState<any | null>(null);
 
+  // Slash Command State
+  const [slashSuggestions, setSlashSuggestions] = React.useState<SlashSuggestion[]>([]);
+  const [slashSelectedIndex, setSlashSelectedIndex] = React.useState(0);
+  const [isSlashOpen, setIsSlashOpen] = React.useState(false);
+  const [phases, setPhases] = React.useState<any[]>([]);
+
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const pendingClarificationRef = React.useRef<any>(null);
+
+  // Fetch phases for active projects to ground slash entity suggestions
+  React.useEffect(() => {
+    if (activeWorkspace?.id && projects.length > 0) {
+      const activeProjId = projects[0]?.id;
+      if (activeProjId) {
+        apiClient.getPhases(activeProjId).then((res) => {
+          if (res.success && Array.isArray(res.data)) {
+            setPhases(res.data);
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [activeWorkspace?.id, projects]);
+
+  // Build Autocomplete Context
+  const slashContext: SlashAutocompleteContext = React.useMemo(() => {
+    return {
+      userRole: normalizedRole,
+      projects: projects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        totalTasks: p.totalTasks,
+        deadline: p.deadline,
+      })),
+      tasks: tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        projectId: t.projectId,
+        phaseId: t.phaseId,
+        status: t.status,
+        priority: t.priority,
+        assigneeId: t.assigneeId,
+        dueDate: t.dueDate,
+      })),
+      phases: phases.map((ph) => ({
+        id: ph.id,
+        name: ph.name,
+        projectId: ph.projectId,
+        order: ph.order,
+      })),
+      members: members.map((m) => ({
+        id: m.id,
+        userId: m.user?.id || m.id,
+        name: m.user?.name || "Squad Member",
+        role: (m.role?.toUpperCase() as Role) || Role.MEMBER,
+        email: m.user?.email || null,
+      })),
+      currentProjectId: projects.find((p) => pathname.includes(p.id))?.id || projects[0]?.id,
+    };
+  }, [normalizedRole, projects, tasks, phases, members, pathname]);
+
+  // Handle Input Change and compute suggestions
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setInput(val);
+
+    if (val.trimStart().startsWith("/")) {
+      const suggestions = getSlashSuggestions(val, slashContext);
+      setSlashSuggestions(suggestions);
+      setSlashSelectedIndex(0);
+      setIsSlashOpen(suggestions.length > 0);
+    } else {
+      setIsSlashOpen(false);
+      setSlashSuggestions([]);
+    }
+  };
+
+  const handleSelectSuggestion = (suggestion: SlashSuggestion) => {
+    if (suggestion.disabled) return;
+
+    const newValue = suggestion.value;
+    setInput(newValue);
+
+    // Compute next level of suggestions immediately
+    const nextSuggestions = getSlashSuggestions(newValue, slashContext);
+    setSlashSuggestions(nextSuggestions);
+    setSlashSelectedIndex(0);
+    setIsSlashOpen(nextSuggestions.length > 0);
+
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+  };
+
+  // Keyboard navigation for slash commands
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isSlashOpen || slashSuggestions.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSlashSelectedIndex((prev) => (prev + 1) % slashSuggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSlashSelectedIndex((prev) => (prev - 1 + slashSuggestions.length) % slashSuggestions.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      const selected = slashSuggestions[slashSelectedIndex];
+      if (selected) {
+        e.preventDefault();
+        handleSelectSuggestion(selected);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setIsSlashOpen(false);
+    }
+  };
 
   // Auto-scroll to bottom of conversation
   React.useEffect(() => {
@@ -115,6 +239,7 @@ export function AiAssistantDrawer() {
     if (!text || isPlanning || isExecuting) return;
 
     setInput("");
+    setIsSlashOpen(false);
 
     // 1. Add User Message
     addMessage({
@@ -124,12 +249,30 @@ export function AiAssistantDrawer() {
       timestamp: new Date().toISOString(),
     });
 
+    // 2. Check if input is a slash command
+    let promptForEngine = text;
+    if (text.startsWith("/")) {
+      const parsed = parseSlashCommand(text, slashContext);
+      if (parsed.error) {
+        addMessage({
+          id: `ast_${Date.now()}`,
+          role: "assistant",
+          content: `⚠️ **Perintah tidak valid**: ${parsed.error}`,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+      if (parsed.naturalLanguagePrompt) {
+        promptForEngine = parsed.naturalLanguagePrompt;
+      }
+    }
+
     setIsPlanning(true);
 
     try {
-      // 2. Call Plan Generation API (with pending clarification context if exists)
+      // 3. Call Plan Generation API (with pending clarification context if exists)
       const res = await apiClient.generateAiPlan({
-        prompt: text,
+        prompt: promptForEngine,
         currentProjectId,
         activePath: pathname,
         pendingClarification: pendingClarificationRef.current || undefined,
@@ -746,10 +889,21 @@ export function AiAssistantDrawer() {
 
         {/* Prompt Input Footer */}
         {activeTab === "chat" && (
-          <div className="border-t border-border p-3 sm:p-4 bg-surface/40">
+          <div className="relative border-t border-border p-3 sm:p-4 bg-surface/40">
+            {/* Slash Command Autocomplete Dropdown */}
+            <SlashCommandAutocomplete
+              suggestions={slashSuggestions}
+              selectedIndex={slashSelectedIndex}
+              onSelect={handleSelectSuggestion}
+              onHoverIndex={setSlashSelectedIndex}
+              isOpen={isSlashOpen}
+              currentInput={input}
+            />
+
             <form
               onSubmit={(e) => {
                 e.preventDefault();
+                setIsSlashOpen(false);
                 handleSendPrompt();
               }}
               className="flex items-center gap-2"
@@ -758,8 +912,9 @@ export function AiAssistantDrawer() {
                 ref={inputRef}
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ketik instruksi bebas (e.g. Buat project website Cafe ABC, deadline 30 Sept)..."
+                onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
+                placeholder="Ketik '/' untuk perintah atau instruksi bebas..."
                 disabled={isPlanning || isExecuting}
                 className="flex-1 rounded-xl border border-border bg-card px-3.5 py-2.5 text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/40 transition-all"
               />

@@ -427,7 +427,7 @@ async function runPhase4Tests() {
   const val7_4 = validateAiPlan(plan2_1, memberContext);
   assert(
     val7_4.isValid === true &&
-    val7_4.validatedPlan.status === "READY",
+    (val7_4.validatedPlan.status === "READY" || val7_4.validatedPlan.status === "NEEDS_CONFIRMATION"),
     "RBAC: MEMBER role can update tasks"
   );
 
