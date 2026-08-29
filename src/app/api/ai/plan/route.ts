@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, currentProjectId, currentTaskId, activePath, conversationHistory, pendingClarification } = body;
+    const { prompt, mode, currentProjectId, currentTaskId, activePath, conversationHistory, pendingClarification } = body;
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return NextResponse.json(
@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
       activePath,
     });
 
-    // 2. Generate structured AI Plan with conversational memory and clarification state
-    const plan = await generateAiPlan(prompt, context, conversationHistory, pendingClarification);
+    // 2. Generate structured AI Plan with conversational memory, clarification state, and Strict/Smart mode
+    const plan = await generateAiPlan(prompt, context, conversationHistory, pendingClarification, mode || "STRICT");
 
     return NextResponse.json({
       success: true,

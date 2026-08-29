@@ -584,6 +584,7 @@ export const apiClient = {
   // AI Assistant (Phase 14 & AI Reliability Architecture)
   async generateAiPlan(params: {
     prompt: string;
+    mode?: "STRICT" | "SMART";
     currentProjectId?: string;
     currentTaskId?: string;
     activePath?: string;

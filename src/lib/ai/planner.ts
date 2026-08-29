@@ -1,15 +1,17 @@
-import { AiAction, AiExecutionContext, AiPlan, ClarificationState } from "./types";
+import { AiAction, AiExecutionContext, AiPlan, ClarificationState, AiCreationMode, AIProjectPlan } from "./types";
 import { callExternalAiProvider } from "./provider";
 import { validateAiPlan } from "./validator";
 import { resolveNaturalDate } from "./dateResolver";
 import { resolveWorkspaceMember, resolveClarificationAnswer } from "./entityResolver";
+import { extractExplicitRequirements } from "./requirementExtractor";
+import { validateStrictProjectPlan } from "./projectPlanValidator";
 
 /**
  * Builds the comprehensive System Prompt for Gemini LLM Planner.
  * Injects complete workspace state, active contextual route/project, squad members, existing projects,
  * conversation history, relative date calculation rules, ambiguity rules, and strict JSON output schema.
  */
-function buildGeminiSystemPrompt(context: AiExecutionContext): string {
+function buildGeminiSystemPrompt(context: AiExecutionContext, mode: AiCreationMode = "STRICT"): string {
   const historyText =
     context.conversationHistory && context.conversationHistory.length > 0
       ? `\n### PREVIOUS CONVERSATION TURNS (CONTEXT CONTINUITY):\n${context.conversationHistory
@@ -28,6 +30,13 @@ If the user's message is answering this clarification (e.g. selecting a candidat
 
   return `You are Synplan AI Assistant, a world-class project management and execution planner.
 Your role is to understand the user's natural language instructions (in Indonesian or English), resolve intent and context semantically, and generate a structured JSON action plan.
+
+### CREATION MODE: ${mode}
+${
+  mode === "STRICT"
+    ? "- **STRICT MODE INVARIANTS**: Follow the user's explicitly specified structural requirements (exact phase count, exact phase names, exact task count, exact task titles) EXACTLY. DO NOT invent extra phases, extra tasks, or alter explicit requirements unless requested."
+    : "- **SMART MODE**: If the user's prompt is unconstrained, you may propose standard delivery phases and structured initial tasks, while always respecting explicit user constraints."
+}
 
 ### RULES & BEHAVIOR:
 1. **Semantic Understanding**:
@@ -137,7 +146,8 @@ export async function generateAiPlan(
   prompt: string,
   context: AiExecutionContext,
   conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>,
-  pendingClarification?: ClarificationState
+  pendingClarification?: ClarificationState,
+  mode: AiCreationMode = "STRICT"
 ): Promise<AiPlan> {
   const planId = `plan_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const cleanPrompt = prompt.trim();
@@ -155,6 +165,7 @@ export async function generateAiPlan(
       id: planId,
       userPrompt: prompt,
       assistantMessage: "Aksi dibatalkan. Tidak ada perubahan yang dilakukan ke database.",
+      mode,
       actions: [],
       status: "READY",
       requiresConfirmation: false,
@@ -175,6 +186,7 @@ export async function generateAiPlan(
         id: planId,
         userPrompt: prompt,
         assistantMessage: "Tidak ada riwayat eksekusi sebelumnya yang dapat di-undo pada sesi ini.",
+        mode,
         actions: [],
         status: "READY",
         requiresConfirmation: false,
@@ -192,6 +204,7 @@ export async function generateAiPlan(
         id: planId,
         userPrompt: prompt,
         assistantMessage: error || "Aksi sebelumnya tidak dapat dibatalkan secara otomatis.",
+        mode,
         actions: [],
         status: "READY",
         requiresConfirmation: false,
@@ -227,6 +240,7 @@ export async function generateAiPlan(
         id: planId,
         userPrompt: prompt,
         assistantMessage: "Aksi dibatalkan. Tidak ada perubahan yang dilakukan.",
+        mode,
         actions: [],
         status: "READY",
         requiresConfirmation: false,
@@ -271,6 +285,7 @@ export async function generateAiPlan(
         assistantMessage: isAssign
           ? `Menugaskan ke **${clarRes.selectedNames.join(" & ")}**.`
           : `Memilih **${clarRes.selectedNames.join(" & ")}** untuk ditambahkan ke proyek.`,
+        mode,
         actions,
         status: "READY",
         requiresConfirmation: false,
@@ -286,7 +301,7 @@ export async function generateAiPlan(
     }
   }
 
-  const systemPrompt = buildGeminiSystemPrompt(enrichedContext);
+  const systemPrompt = buildGeminiSystemPrompt(enrichedContext, mode);
 
   // 2. PRIMARY PATH: Call Gemini LLM
   try {
@@ -311,6 +326,7 @@ export async function generateAiPlan(
             (parsed.needsClarification
               ? "Saya membutuhkan beberapa klarifikasi sebelum menjalankan aksi."
               : "Saya telah menyiapkan rencana aksi."),
+          mode,
           actions: rawActions.map((a, idx) => ({
             id: a.id || `act_${idx + 1}`,
             type: a.type,
@@ -343,7 +359,7 @@ export async function generateAiPlan(
           createdAt: new Date().toISOString(),
         };
 
-        // Validate and enrich with server-side entity resolution
+        // Validate and enrich with server-side entity resolution & strict validation
         const { validatedPlan } = validateAiPlan(rawPlan, enrichedContext);
         return validatedPlan;
       }
@@ -353,7 +369,7 @@ export async function generateAiPlan(
   }
 
   // 3. FALLBACK PATH: Robust Heuristic NLP Engine (Offline / Degraded Mode)
-  const heuristicPlan = parseHeuristicIntent(prompt, enrichedContext);
+  const heuristicPlan = parseHeuristicIntent(prompt, enrichedContext, mode);
   const { validatedPlan } = validateAiPlan(heuristicPlan, enrichedContext);
   return {
     ...validatedPlan,
@@ -363,9 +379,13 @@ export async function generateAiPlan(
 }
 
 /**
- * Heuristic Natural Language Parser (Offline Fallback Engine)
+ * Heuristic Natural Language Parser (Offline Fallback Engine with Strict & Smart modes)
  */
-export function parseHeuristicIntent(prompt: string, context: AiExecutionContext): AiPlan {
+export function parseHeuristicIntent(
+  prompt: string,
+  context: AiExecutionContext,
+  mode: AiCreationMode = "STRICT"
+): AiPlan {
   const cleanPrompt = prompt.trim();
   const lower = cleanPrompt.toLowerCase();
   const planId = `plan_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -384,6 +404,7 @@ export function parseHeuristicIntent(prompt: string, context: AiExecutionContext
     lower.startsWith("project ");
 
   if (isCreateProject) {
+    const constraints = extractExplicitRequirements(cleanPrompt, context.serverTime);
     let projectName = "New Project";
     const nameMatch =
       cleanPrompt.match(/(?:buat|buatin|buatkan|bikin|bikinin|create|setup|generate|susun|rancang|mulai|ingin|mau|ayo|punya project baru)\s+(?:sebuah\s+)?(?:projek|project|proyek|website|web|situs|aplikasi|app)?\s*([^,\.\n]+)/i) ||
@@ -403,23 +424,51 @@ export function parseHeuristicIntent(prompt: string, context: AiExecutionContext
       }
     }
 
-    let deadline: string | undefined = undefined;
-    const deadlineMatch = cleanPrompt.match(
-      /(?:deadline|tenggat|target|due|selesai(?: tanggal)?)\s*(?::|\s)?\s*([0-9]{1,2}\s+[A-Za-z]+(?:\s+[0-9]{4})?|[0-9]{4}-[0-9]{2}-[0-9]{2}|satu\s+[A-Za-z]+|next\s+week|minggu\s+depan|next\s+month|bulan\s+depan|akhir\s+bulan)/i
-    );
-    if (deadlineMatch && deadlineMatch[1]) {
-      const resolved = resolveNaturalDate(deadlineMatch[1]);
-      if (resolved) deadline = resolved.isoDate;
+    let deadline: string | undefined = constraints.exactDeadline;
+    if (!deadline) {
+      const deadlineMatch = cleanPrompt.match(
+        /(?:deadline|tenggat|target|due|selesai(?: tanggal)?)\s*(?::|\s)?\s*([0-9]{1,2}\s+[A-Za-z]+(?:\s+[0-9]{4})?|[0-9]{4}-[0-9]{2}-[0-9]{2}|satu\s+[A-Za-z]+|besok|lusa|next\s+week|minggu\s+depan|next\s+month|bulan\s+depan|akhir\s+bulan)/i
+      );
+      if (deadlineMatch && deadlineMatch[1]) {
+        const resolved = resolveNaturalDate(deadlineMatch[1], context.serverTime);
+        if (resolved) deadline = resolved.isoDate;
+      }
     }
 
-    const phases: Array<{ name: string; order: number }> = [
-      { name: "Konsep & Perencanaan", order: 1 },
-      { name: "Desain & UI/UX", order: 2 },
-      { name: "Development", order: 3 },
-      { name: "Testing & QA", order: 4 },
-      { name: "Deployment & Launch", order: 5 },
-    ];
+    // Determine Phases
+    let phases: Array<{ name: string; order: number; tasks: Array<{ title: string; priority?: any; status?: any; assigneeName?: string; dueDate?: string }> }> = [];
 
+    if (constraints.exactPhaseNames && constraints.exactPhaseNames.length > 0) {
+      // Exact user-specified phase names
+      phases = constraints.exactPhaseNames.map((pName, idx) => ({
+        name: pName,
+        order: idx + 1,
+        tasks: [],
+      }));
+    } else if (constraints.exactPhaseCount !== undefined && constraints.exactPhaseCount > 0) {
+      const defaultNames = ["Planning", "Design", "Development", "Testing", "Deployment", "Maintenance"];
+      phases = defaultNames.slice(0, constraints.exactPhaseCount).map((pName, idx) => ({
+        name: pName,
+        order: idx + 1,
+        tasks: [],
+      }));
+    } else if (mode === "SMART" || !constraints.hasExplicitStructure) {
+      // Smart Mode Default Phases
+      phases = [
+        { name: "Konsep & Perencanaan", order: 1, tasks: [] },
+        { name: "Desain & UI/UX", order: 2, tasks: [] },
+        { name: "Development", order: 3, tasks: [] },
+        { name: "Testing & QA", order: 4, tasks: [] },
+        { name: "Deployment & Launch", order: 5, tasks: [] },
+      ];
+    } else {
+      // Strict mode with no phases specified
+      phases = [
+        { name: "General Delivery", order: 1, tasks: [] },
+      ];
+    }
+
+    // Determine Tasks
     const initialTasks: Array<{
       title: string;
       description?: string;
@@ -427,94 +476,153 @@ export function parseHeuristicIntent(prompt: string, context: AiExecutionContext
       status?: "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE";
       phaseName?: string;
       assigneeName?: string;
-    }> = [
-      { title: "Scope & Requirements", phaseName: "Konsep & Perencanaan", priority: "HIGH" },
-      { title: "UI Mockups & Design System", phaseName: "Desain & UI/UX", priority: "MEDIUM" },
-      { title: "Frontend Architecture", phaseName: "Development", priority: "HIGH" },
-      { title: "Backend API Integration", phaseName: "Development", priority: "HIGH" },
-      { title: "QA Testing & Verification", phaseName: "Testing & QA", priority: "MEDIUM" },
-      { title: "Production Deployment", phaseName: "Deployment & Launch", priority: "URGENT" },
-    ];
+      dueDate?: string;
+    }> = [];
 
+    if (constraints.exactTaskTitles && constraints.exactTaskTitles.length > 0) {
+      // Exact user-specified tasks
+      constraints.exactTaskTitles.forEach((tTitle, idx) => {
+        const assignedPhase = phases[idx % phases.length]?.name;
+        initialTasks.push({
+          title: tTitle,
+          priority: "HIGH",
+          status: "TODO",
+          phaseName: assignedPhase,
+          dueDate: deadline,
+        });
+      });
+    } else if (mode === "SMART" || !constraints.hasExplicitStructure) {
+      // Smart Mode default starter tasks
+      initialTasks.push(
+        { title: "Scope & Requirements", phaseName: phases[0]?.name || "Planning", priority: "HIGH" },
+        { title: "UI Mockups & Design System", phaseName: phases[1]?.name || phases[0]?.name, priority: "MEDIUM" },
+        { title: "Frontend Architecture", phaseName: phases[2]?.name || phases[0]?.name, priority: "HIGH" },
+        { title: "Backend API Integration", phaseName: phases[2]?.name || phases[0]?.name, priority: "HIGH" },
+        { title: "QA Testing & Verification", phaseName: phases[3]?.name || phases[0]?.name, priority: "MEDIUM" },
+        { title: "Production Deployment", phaseName: phases[4]?.name || phases[0]?.name, priority: "URGENT" }
+      );
+    }
+
+    // Check task assignments (e.g. "Assign task frontend ke Marchelino")
+    const assignMatch = cleanPrompt.match(/(?:assign\s+task|tugaskan\s+task|kasih\s+task)\s+([^,\.\n]+?)\s+ke\s+([A-Za-z]+)/i);
+    if (assignMatch && assignMatch[1] && assignMatch[2]) {
+      const matchTitle = assignMatch[1].trim().toLowerCase();
+      const matchAssignee = assignMatch[2].trim();
+      const foundTask = initialTasks.find((t) => t.title.toLowerCase().includes(matchTitle));
+      if (foundTask) {
+        foundTask.assigneeName = matchAssignee;
+      }
+    }
+
+    // Build Canonical AIProjectPlan
+    const canonicalPlan: AIProjectPlan = {
+      mode,
+      project: {
+        name: projectName,
+        description: `Project generated by Synplan AI (${mode} mode): "${cleanPrompt}"`,
+        deadline,
+        status: "ACTIVE",
+        color: "#6366F1",
+      },
+      phases: phases.map((ph) => ({
+        name: ph.name,
+        order: ph.order,
+        tasks: initialTasks.filter((t) => t.phaseName === ph.name),
+      })),
+      teamMembers: (constraints.exactMembers || []).map((mName) => ({
+        userName: mName,
+        role: "MEMBER",
+      })),
+      explicitConstraints: constraints,
+    };
+
+    // Validate with Strict Project Plan Validator
+    const validationRes = validateStrictProjectPlan(canonicalPlan, constraints);
+
+    // Root CREATE_PROJECT action
     actions.push({
       id: `act_${Date.now()}_1`,
       type: "CREATE_PROJECT",
-      summary: `Buat project "${projectName}" dengan ${phases.length} tahapan dan ${initialTasks.length} tugas.`,
+      summary: `Buat project "${projectName}" dengan ${canonicalPlan.phases.length} tahapan dan ${initialTasks.length} tugas.`,
       riskLevel: "MEDIUM",
       requiredRole: "MEMBER",
       status: "READY",
       requiresConfirmation: true,
       payload: {
         name: projectName,
-        description: `Project generated by Synplan AI: "${cleanPrompt}"`,
+        description: canonicalPlan.project.description,
         deadline,
         status: "ACTIVE",
-        phases,
+        phases: canonicalPlan.phases.map((ph, idx) => ({ name: ph.name, order: ph.order || idx + 1 })),
         initialTasks,
-        memberNames: [],
+        memberNames: constraints.exactMembers || [],
       },
     });
 
-    // Check if prompt also requested custom phases
-    if (lower.includes("phase") || lower.includes("fase")) {
-      const phaseNames = ["Planning", "Design", "Development", "Testing", "Deployment"];
-      let pOrder = 1;
-      phaseNames.forEach((pn) => {
-        if (lower.includes(pn.toLowerCase())) {
-          actions.push({
-            id: `act_${Date.now()}_phase_${pOrder}`,
-            type: "CREATE_PHASE",
-            summary: `Buat phase "${pn}" untuk proyek "${projectName}".`,
-            riskLevel: "MEDIUM",
-            requiredRole: "MEMBER",
-            status: "READY",
-            payload: {
-              projectName,
-              name: pn,
-              order: pOrder++,
-            },
-          });
-        }
+    // Add Member actions
+    if (constraints.exactMembers && constraints.exactMembers.length > 0) {
+      constraints.exactMembers.forEach((memName, idx) => {
+        const found = context.members.find(
+          (m) => m.name.toLowerCase().includes(memName.toLowerCase())
+        );
+        actions.push({
+          id: `act_${Date.now()}_mem_${idx + 1}`,
+          type: "ADD_MEMBER",
+          summary: `Tambahkan ${found?.name || memName} ke tim project "${projectName}".`,
+          riskLevel: "MEDIUM",
+          requiredRole: "MEMBER",
+          status: "READY",
+          payload: {
+            projectName,
+            userId: found?.userId,
+            userName: found?.name || memName,
+            role: "MEMBER",
+          },
+        });
       });
     }
 
-    // Check if prompt also requested members in compound prompt
-    const memberMatches = cleanPrompt.matchAll(/(?:tambahkan|libatkan|dan|serta|anggota|member|sama)\s+([A-Za-z]+)/gi);
-    for (const m of memberMatches) {
-      if (m[1] && !["project", "projek", "proyek", "website", "web", "phase", "fase", "tugas", "task", "sebagai", "ikut", "ke", "tim"].includes(m[1].toLowerCase())) {
-        const found = context.members.find(
-          (mem) => mem.name.toLowerCase().includes(m[1].toLowerCase())
+    // Discrete Task actions in compound prompt (e.g. "task Desain Homepage, assign ke Marchel")
+    const taskMatches = cleanPrompt.matchAll(/(?:task|tugas)\s+([^,\.\n]+?)(?:,|\.|\s+assign|\s+ke|$)/gi);
+    for (const tm of taskMatches) {
+      const tTitle = tm[1]?.trim();
+      if (tTitle && tTitle.length > 2 && !["baru", "ini", "projek", "project", "phase", "fase", "testing"].includes(tTitle.toLowerCase())) {
+        const foundAssignee = context.members.find((m) =>
+          cleanPrompt.toLowerCase().includes(m.name.toLowerCase().split(" ")[0])
         );
-        if (found) {
-          actions.push({
-            id: `act_${Date.now()}_mem_${actions.length + 1}`,
-            type: "ADD_MEMBER",
-            summary: `Tambahkan ${found.name} ke tim project "${projectName}".`,
-            riskLevel: "MEDIUM",
-            requiredRole: "MEMBER",
-            status: "READY",
-            payload: {
-              projectName,
-              userId: found.userId,
-              userName: found.name,
-              role: "MEMBER",
-            },
-          });
-        }
+        actions.push({
+          id: `act_${Date.now()}_task_${actions.length + 1}`,
+          type: "CREATE_TASK",
+          summary: `Buat task "${tTitle}" untuk proyek "${projectName}".`,
+          riskLevel: "MEDIUM",
+          requiredRole: "MEMBER",
+          status: "READY",
+          dependsOn: [`act_${Date.now()}_1`],
+          payload: {
+            projectName,
+            title: tTitle,
+            priority: "HIGH",
+            assigneeName: foundAssignee?.name,
+            assigneeId: foundAssignee?.userId,
+          },
+        });
       }
     }
 
-    assistantMessage = `Saya telah menyiapkan rencana proyek **"${projectName}"** lengkap dengan **${phases.length} tahapan** dan ${actions.length > 1 ? `**${actions.length - 1} aksi terkait**` : "**tugas terstruktur**"}.`;
+    assistantMessage = `Saya telah menyiapkan rencana proyek **"${projectName}"** (${mode} mode) lengkap dengan **${canonicalPlan.phases.length} tahapan** dan **${initialTasks.length} tugas**.`;
 
     return {
       id: planId,
       userPrompt: cleanPrompt,
       assistantMessage,
+      mode,
       actions,
+      projectPlan: canonicalPlan,
+      explicitConstraints: constraints,
       status: "NEEDS_CONFIRMATION",
       requiresConfirmation: true,
       isDestructive: false,
-      warnings,
+      warnings: validationRes.warnings,
       planner: "heuristic",
       provider: "fallback",
       createdAt: new Date().toISOString(),

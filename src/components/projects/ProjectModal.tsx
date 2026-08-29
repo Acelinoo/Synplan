@@ -15,6 +15,7 @@ import {
   Send,
   Loader2,
   Bot,
+  Shield,
 } from "lucide-react";
 import { useWorkspaceStore, useUiStore } from "@/store";
 import { Project } from "@/types";
@@ -22,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { MagnetButton } from "@/components/ui/magnet-button";
 import { apiClient } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
-import { AiPlan } from "@/lib/ai/types";
+import { AiPlan, AiCreationMode } from "@/lib/ai/types";
 
 const projectColors = [
   { name: "Indigo", value: "#6366F1" },
@@ -55,6 +56,9 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
   const [modalMode, setModalMode] = React.useState<"CHOICE" | "AI" | "MANUAL">(
     editingProject ? "MANUAL" : "CHOICE"
   );
+
+  // AI Creation Mode: "STRICT" | "SMART"
+  const [aiCreationMode, setAiCreationMode] = React.useState<AiCreationMode>("STRICT");
 
   // Manual Form States
   const [name, setName] = React.useState(editingProject?.name || "");
@@ -265,6 +269,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
       const historyPayload = [...conversationHistory, { role: "user" as const, content: promptToUse }];
       const res = await apiClient.generateAiPlan({
         prompt: promptToUse,
+        mode: aiCreationMode,
         conversationHistory: historyPayload,
       });
 
@@ -486,9 +491,50 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
             <div className="space-y-4">
               {!aiPlan ? (
                 <>
+                  {/* Mode Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-muted-foreground">
+                      Mode Perencanaan AI:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-surface border border-border rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setAiCreationMode("STRICT")}
+                        className={cn(
+                          "flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all text-left",
+                          aiCreationMode === "STRICT"
+                            ? "bg-primary text-primary-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        )}
+                      >
+                        <Shield className="h-4 w-4 shrink-0" />
+                        <div>
+                          <div className="font-bold">Strict Mode</div>
+                          <div className="text-[10px] opacity-80 font-normal">Ikuti instruksi persis</div>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAiCreationMode("SMART")}
+                        className={cn(
+                          "flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all text-left",
+                          aiCreationMode === "SMART"
+                            ? "bg-primary text-primary-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        )}
+                      >
+                        <Sparkles className="h-4 w-4 shrink-0" />
+                        <div>
+                          <div className="font-bold">Smart Mode</div>
+                          <div className="text-[10px] opacity-80 font-normal">Rekomendasi terstruktur</div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-foreground">
-                      Tell Synplan what you want to create
+                      Deskripsikan proyek yang ingin Anda buat:
                     </label>
                     <textarea
                       value={aiPrompt}
@@ -499,7 +545,11 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                         }
                       }}
                       rows={4}
-                      placeholder="Contoh: Buatin projek website toko buah, deadline 1 September. Tambahkan Marchel dan Sarah ke tim. Buat task desain homepage dan assign ke Marchelino."
+                      placeholder={
+                        aiCreationMode === "STRICT"
+                          ? "Contoh Strict: Buat project website cafe dengan 3 phase: Planning, Design, Development. Deadline 1 September 2026. Tambahkan Marchelino ke tim."
+                          : "Contoh Smart: Buatkan project mobile app e-commerce lengkap dengan task dan deadline akhir bulan."
+                      }
                       className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary/20 transition-all resize-none"
                     />
                   </div>
@@ -558,9 +608,14 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                       <span className="font-bold text-xs text-primary flex items-center gap-1.5">
                         <Sparkles className="h-4 w-4" /> Structured Project Preview
                       </span>
-                      <span className="rounded-md bg-primary/20 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
-                        {aiPlan.planner === "llm" ? "Gemini LLM" : "Fallback NLP"}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded-md bg-primary/20 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
+                          {aiPlan.mode === "STRICT" ? "🔒 STRICT MODE" : "🧠 SMART MODE"}
+                        </span>
+                        <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
+                          {aiPlan.planner === "llm" ? "Gemini LLM" : "Fallback NLP"}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Clarification Alert if ambiguous */}
@@ -620,29 +675,56 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                         </div>
                       )}
 
-                      {/* Tasks Overview */}
-                      {taskActions.length > 0 && (
+                      {/* Phases Overview */}
+                      {createProjectAction?.payload?.phases && createProjectAction.payload.phases.length > 0 && (
                         <div>
                           <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                            Tasks ({taskActions.length})
+                            Phases ({createProjectAction.payload.phases.length})
                           </span>
-                          <div className="space-y-1 mt-1 max-h-32 overflow-y-auto pr-1">
-                            {taskActions.map((t, idx) => (
-                              <div
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {createProjectAction.payload.phases.map((ph: any, idx: number) => (
+                              <span
                                 key={idx}
-                                className="flex items-center justify-between rounded-lg bg-surface/80 p-2 text-xs border border-border/50"
+                                className="inline-flex items-center gap-1.5 rounded-md bg-surface/90 border border-primary/20 px-2 py-0.5 text-[11px] font-medium text-foreground"
                               >
-                                <span className="font-medium text-foreground flex items-center gap-1.5">
-                                  <CheckSquare className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                                  {t.payload?.title}
-                                </span>
-                                {t.payload?.assigneeName && (
-                                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                    {t.payload.assigneeName}
-                                  </span>
-                                )}
-                              </div>
+                                <Layers className="h-3 w-3 text-primary" />
+                                {idx + 1}. {ph.name}
+                              </span>
                             ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tasks Overview */}
+                      {(createProjectAction?.payload?.initialTasks?.length || taskActions.length) > 0 && (
+                        <div>
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                            Tasks ({createProjectAction?.payload?.initialTasks?.length || taskActions.length})
+                          </span>
+                          <div className="space-y-1 mt-1 max-h-36 overflow-y-auto pr-1">
+                            {(createProjectAction?.payload?.initialTasks || taskActions.map((t) => t.payload)).map(
+                              (t: any, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between rounded-lg bg-surface/80 p-2 text-xs border border-border/50"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <CheckSquare className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                    <span className="font-medium text-foreground">{t.title}</span>
+                                    {t.phaseName && (
+                                      <span className="text-[9px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
+                                        {t.phaseName}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {t.assigneeName && (
+                                    <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                                      {t.assigneeName}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            )}
                           </div>
                         </div>
                       )}

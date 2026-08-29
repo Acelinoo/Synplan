@@ -246,10 +246,55 @@ export interface AiAction<T extends AiActionType = AiActionType> {
   errors?: string[];
 }
 
+export type AiCreationMode = "STRICT" | "SMART";
+
+export interface ExplicitProjectConstraints {
+  exactPhaseCount?: number;
+  exactPhaseNames?: string[];
+  exactTaskCount?: number;
+  exactTaskTitles?: string[];
+  exactDeadline?: string;
+  exactMembers?: string[];
+  hasExplicitStructure: boolean;
+}
+
+export interface AIProjectPlan {
+  mode: AiCreationMode;
+  project: {
+    name: string;
+    description?: string;
+    deadline?: string;
+    color?: string;
+    status?: "PLANNING" | "ACTIVE" | "ON_HOLD" | "COMPLETED";
+  };
+  phases: Array<{
+    name: string;
+    description?: string;
+    order?: number;
+    tasks: Array<{
+      title: string;
+      description?: string;
+      priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+      status?: "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE";
+      dueDate?: string;
+      assigneeName?: string;
+      assigneeId?: string;
+      subtasks?: Array<{ title: string }>;
+    }>;
+  }>;
+  teamMembers?: Array<{
+    userName: string;
+    userId?: string;
+    role?: string;
+  }>;
+  explicitConstraints?: ExplicitProjectConstraints;
+}
+
 export interface AiPlan {
   id: string;
   userPrompt: string;
   assistantMessage: string;
+  mode?: AiCreationMode;
   actions: AiAction[];
   status: ActionExecutionStatus;
   requiresConfirmation: boolean;
@@ -261,6 +306,8 @@ export interface AiPlan {
   needsClarification?: boolean;
   clarificationsNeeded?: string[];
   clarificationState?: ClarificationState;
+  projectPlan?: AIProjectPlan;
+  explicitConstraints?: ExplicitProjectConstraints;
   planner: "llm" | "heuristic";
   provider: "gemini" | "openai" | "fallback";
   confidence?: number;
