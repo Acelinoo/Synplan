@@ -385,6 +385,8 @@ export function AiAssistantDrawer() {
       const res = await apiClient.executeAiPlan({
         plan,
         confirmed,
+        confirmationToken: plan.confirmationToken,
+        planFingerprint: plan.planFingerprint,
       });
 
       if (res.success && res.data) {
@@ -652,37 +654,110 @@ export function AiAssistantDrawer() {
                           </div>
                         </div>
                       ) : (
-                        /* Actions Breakdown List */
+                        /* Actions Breakdown / Ground-Truth Preview List */
                         msg.plan.actions.length > 0 && (
-                          <div className="space-y-1.5">
-                            {msg.plan.actions.map((act, idx) => (
-                              <div
-                                key={act.id || idx}
-                                className="flex items-start gap-2 rounded-lg bg-surface/70 p-2 text-xs border border-border/40"
-                              >
-                                <div className="mt-0.5">
-                                  {act.type === "CREATE_PROJECT" ? (
-                                    <FolderKanban className="h-3.5 w-3.5 text-primary shrink-0" />
-                                  ) : act.type === "CREATE_PHASE" ? (
-                                    <Layers className="h-3.5 w-3.5 text-sky-400 shrink-0" />
-                                  ) : act.type === "ASSIGN_TASK" ? (
-                                    <Users2 className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                                  ) : act.isDestructive ? (
-                                    <Trash2 className="h-3.5 w-3.5 text-destructive shrink-0" />
-                                  ) : (
-                                    <CheckSquare className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                                  )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-foreground">{act.summary}</p>
-                                  {act.warnings && act.warnings.length > 0 && (
-                                    <p className="text-[10px] text-amber-500 mt-0.5">
-                                      ⚠️ {act.warnings.join(" ")}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
+                          <div className="space-y-2">
+                            {msg.plan.actionPreviews && msg.plan.actionPreviews.length > 0
+                              ? msg.plan.actionPreviews.map((prev, idx) => (
+                                  <div
+                                    key={prev.actionId || idx}
+                                    className={`rounded-xl border p-2.5 text-xs space-y-1.5 transition-colors ${
+                                      prev.isDestructive || prev.riskLevel === "CRITICAL"
+                                        ? "bg-red-500/5 border-red-500/30"
+                                        : prev.riskLevel === "HIGH"
+                                        ? "bg-rose-500/5 border-rose-500/30"
+                                        : prev.riskLevel === "MEDIUM"
+                                        ? "bg-amber-500/5 border-amber-500/30"
+                                        : "bg-surface/70 border-border/60"
+                                    }`}
+                                  >
+                                    {/* Action Header & Risk Badge */}
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <span className="rounded-md bg-foreground/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-foreground">
+                                          {prev.entityType}
+                                        </span>
+                                        <span className="font-semibold text-foreground truncate">
+                                          {prev.entityName}
+                                        </span>
+                                      </div>
+
+                                      <span
+                                        className={`rounded-full px-2 py-0.5 text-[9px] font-bold shrink-0 uppercase tracking-wider ${
+                                          prev.riskLevel === "CRITICAL"
+                                            ? "bg-red-500/15 text-red-500 border border-red-500/30"
+                                            : prev.riskLevel === "HIGH"
+                                            ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                                            : prev.riskLevel === "MEDIUM"
+                                            ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                            : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                        }`}
+                                      >
+                                        {prev.riskLevel}
+                                      </span>
+                                    </div>
+
+                                    {/* Summary */}
+                                    <p className="text-[11px] text-muted-foreground">{prev.summary}</p>
+
+                                    {/* Before -> After Diff Pills */}
+                                    {prev.changes && prev.changes.length > 0 && (
+                                      <div className="flex flex-wrap gap-1 pt-1">
+                                        {prev.changes.map((chg, cIdx) => (
+                                          <div
+                                            key={cIdx}
+                                            className="rounded-md bg-foreground/5 border border-border/40 px-2 py-0.5 text-[10px] text-foreground flex items-center gap-1"
+                                          >
+                                            <span className="text-muted-foreground font-medium">{chg.field}:</span>
+                                            {chg.from && (
+                                              <>
+                                                <span className="line-through text-muted-foreground/70">{chg.from}</span>
+                                                <span className="text-primary font-bold">→</span>
+                                              </>
+                                            )}
+                                            <span className="font-semibold text-foreground">{chg.to}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {/* Warning Banner */}
+                                    {prev.warning && (
+                                      <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-1.5 text-[10px] text-red-500 flex items-center gap-1.5">
+                                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                                        <span>{prev.warning}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              : msg.plan.actions.map((act, idx) => (
+                                  <div
+                                    key={act.id || idx}
+                                    className="flex items-start gap-2 rounded-lg bg-surface/70 p-2 text-xs border border-border/40"
+                                  >
+                                    <div className="mt-0.5">
+                                      {act.type === "CREATE_PROJECT" ? (
+                                        <FolderKanban className="h-3.5 w-3.5 text-primary shrink-0" />
+                                      ) : act.type === "CREATE_PHASE" ? (
+                                        <Layers className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+                                      ) : act.type === "ASSIGN_TASK" ? (
+                                        <Users2 className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                      ) : act.isDestructive ? (
+                                        <Trash2 className="h-3.5 w-3.5 text-destructive shrink-0" />
+                                      ) : (
+                                        <CheckSquare className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-foreground">{act.summary}</p>
+                                      {act.warnings && act.warnings.length > 0 && (
+                                        <p className="text-[10px] text-amber-500 mt-0.5">
+                                          ⚠️ {act.warnings.join(" ")}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
                           </div>
                         )
                       )}

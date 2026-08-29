@@ -605,7 +605,13 @@ export const apiClient = {
       body: JSON.stringify(params),
     });
   },
-  async executeAiPlan(params: { plan: any; confirmed?: boolean; idempotencyKey?: string }) {
+  async executeAiPlan(params: {
+    plan: any;
+    confirmed?: boolean;
+    confirmationToken?: string;
+    planFingerprint?: string;
+    idempotencyKey?: string;
+  }) {
     const res = await request<any>("/api/ai/execute", {
       method: "POST",
       body: JSON.stringify(params),

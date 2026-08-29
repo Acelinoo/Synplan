@@ -5,6 +5,7 @@ import {
   ActionExecutionStatus,
   ActionRiskLevel,
   ClarificationState,
+  ActionPreviewItem,
 } from "./types";
 import { ACTION_REGISTRY } from "./registry";
 import { validateActionPermission } from "./permissions";
@@ -16,6 +17,7 @@ import {
 } from "./entityResolver";
 import { resolveNaturalDate } from "./dateResolver";
 import { sortAndValidateDependencies } from "./dependencyGraph";
+import { createPlanFingerprint, extractTargetEntitySnapshots } from "./confirmationStore";
 
 export { resolveWorkspaceMember, resolveWorkspaceProject, resolveWorkspaceTask, resolveWorkspacePhase };
 
@@ -95,6 +97,182 @@ export function normalizeActionConflicts(actions: AiAction[]): {
 }
 
 /**
+ * Generates ground-truth action previews directly from validated actions and current execution context.
+ */
+export function generateActionPreviews(
+  actions: AiAction[],
+  context: AiExecutionContext
+): ActionPreviewItem[] {
+  const previews: ActionPreviewItem[] = [];
+
+  for (const act of actions) {
+    const p = act.payload || {};
+    let entityType: ActionPreviewItem["entityType"] = "TASK";
+    let entityName = "Unknown Entity";
+    const changes: ActionPreviewItem["changes"] = [];
+    let warning: string | undefined = undefined;
+
+    switch (act.type) {
+      case "CREATE_TASK": {
+        entityType = "TASK";
+        entityName = p.title || "Task Baru";
+        changes.push({ field: "Judul Task", from: null, to: p.title || "Task Baru" });
+        if (p.priority) changes.push({ field: "Priority", from: null, to: p.priority });
+        if (p.status) changes.push({ field: "Status", from: null, to: p.status });
+        if (p.dueDate) changes.push({ field: "Deadline", from: null, to: p.dueDate.split("T")[0] });
+        if (p.assigneeName) changes.push({ field: "Assignee", from: null, to: p.assigneeName });
+        if (p.projectName) changes.push({ field: "Project", from: null, to: p.projectName });
+        if (p.phaseName) changes.push({ field: "Fase", from: null, to: p.phaseName });
+        break;
+      }
+
+      case "UPDATE_TASK": {
+        entityType = "TASK";
+        const existingTask = context.tasks.find((t) => t.id === p.taskId || t.title.toLowerCase() === (p.taskTitle || "").toLowerCase());
+        entityName = existingTask?.title || p.taskTitle || "Task Terkait";
+
+        if (p.title && p.title !== existingTask?.title) {
+          changes.push({ field: "Judul", from: existingTask?.title || "Judul Lama", to: p.title });
+        }
+        if (p.status && p.status !== existingTask?.status) {
+          changes.push({ field: "Status", from: existingTask?.status || "TODO", to: p.status });
+        }
+        if (p.priority && p.priority !== existingTask?.priority) {
+          changes.push({ field: "Priority", from: existingTask?.priority || "MEDIUM", to: p.priority });
+        }
+        if (p.dueDate) {
+          const oldDue = existingTask?.dueDate ? existingTask.dueDate.split("T")[0] : "Belum diatur";
+          const newDue = p.dueDate.split("T")[0];
+          if (oldDue !== newDue) {
+            changes.push({ field: "Deadline", from: oldDue, to: newDue });
+          }
+        }
+        if (p.unassign) {
+          const prevMem = context.members.find((m) => m.userId === existingTask?.assigneeId);
+          changes.push({ field: "Assignee", from: prevMem?.name || "Assigned", to: "Unassigned" });
+        } else if (p.assigneeName || p.assigneeId) {
+          const prevMem = context.members.find((m) => m.userId === existingTask?.assigneeId);
+          const newMem = context.members.find((m) => m.userId === p.assigneeId) || { name: p.assigneeName };
+          changes.push({ field: "Assignee", from: prevMem?.name || "Unassigned", to: newMem?.name || p.assigneeName });
+        }
+        if (p.phaseId || p.phaseName) {
+          const fromPhase = context.phases.find((ph) => ph.id === existingTask?.phaseId);
+          const toPhase = context.phases.find((ph) => ph.id === p.phaseId) || { name: p.phaseName };
+          if (fromPhase?.name !== toPhase?.name) {
+            changes.push({ field: "Fase", from: fromPhase?.name || "Belum ada", to: toPhase?.name || p.phaseName });
+          }
+        }
+        break;
+      }
+
+      case "ASSIGN_TASK": {
+        entityType = "TASK";
+        const existingTask = context.tasks.find((t) => t.id === p.taskId || t.title.toLowerCase() === (p.taskTitle || "").toLowerCase());
+        entityName = existingTask?.title || p.taskTitle || "Task Terkait";
+        const prevMem = context.members.find((m) => m.userId === existingTask?.assigneeId);
+        const newMem = context.members.find((m) => m.userId === p.assigneeId) || { name: p.assigneeName };
+        changes.push({ field: "Penugasan", from: prevMem?.name || "Unassigned", to: newMem?.name || p.assigneeName || "Squad Member" });
+        break;
+      }
+
+      case "DELETE_TASK": {
+        entityType = "TASK";
+        const existingTask = context.tasks.find((t) => t.id === p.id || t.title.toLowerCase() === (p.name || "").toLowerCase());
+        entityName = existingTask?.title || p.name || "Task Terkait";
+        warning = `Task "${entityName}" akan dihapus permanen beserta seluruh komentar & riwayatnya.`;
+        break;
+      }
+
+      case "CREATE_PROJECT": {
+        entityType = "PROJECT";
+        entityName = p.name || "Project Baru";
+        changes.push({ field: "Nama Project", from: null, to: p.name });
+        if (p.deadline) changes.push({ field: "Deadline Project", from: null, to: p.deadline });
+        if (Array.isArray(p.phases)) changes.push({ field: "Jumlah Fase", from: null, to: `${p.phases.length} fase` });
+        if (Array.isArray(p.initialTasks)) changes.push({ field: "Jumlah Task", from: null, to: `${p.initialTasks.length} task` });
+        break;
+      }
+
+      case "UPDATE_PROJECT": {
+        entityType = "PROJECT";
+        const existingProj = context.projects.find((pr) => pr.id === p.id || pr.name.toLowerCase() === (p.name || "").toLowerCase());
+        entityName = existingProj?.name || p.name || "Project Terkait";
+        if (p.name && p.name !== existingProj?.name) changes.push({ field: "Nama Project", from: existingProj?.name, to: p.name });
+        if (p.deadline) changes.push({ field: "Deadline", from: existingProj?.deadline || "None", to: p.deadline });
+        if (p.status && p.status !== existingProj?.status) changes.push({ field: "Status", from: existingProj?.status, to: p.status });
+        break;
+      }
+
+      case "DELETE_PROJECT": {
+        entityType = "PROJECT";
+        const existingProj = context.projects.find((pr) => pr.id === p.id || pr.name.toLowerCase() === (p.name || "").toLowerCase());
+        entityName = existingProj?.name || p.name || "Project Terkait";
+        warning = `⚠️ PERMANEN: Project "${entityName}" beserta seluruh fase dan task di dalamnya akan dihapus total.`;
+        break;
+      }
+
+      case "CREATE_PHASE": {
+        entityType = "PHASE";
+        entityName = p.name || "Fase Baru";
+        changes.push({ field: "Fase Baru", from: null, to: p.name });
+        break;
+      }
+
+      case "UPDATE_PHASE": {
+        entityType = "PHASE";
+        const existingPhase = context.phases.find((ph) => ph.id === p.phaseId || ph.name.toLowerCase() === (p.name || "").toLowerCase());
+        entityName = existingPhase?.name || p.name || "Fase Terkait";
+        if (p.name && p.name !== existingPhase?.name) changes.push({ field: "Nama Fase", from: existingPhase?.name, to: p.name });
+        break;
+      }
+
+      case "DELETE_PHASE": {
+        entityType = "PHASE";
+        const existingPhase = context.phases.find((ph) => ph.id === p.id || ph.name.toLowerCase() === (p.name || "").toLowerCase());
+        entityName = existingPhase?.name || p.name || "Fase Terkait";
+        warning = `Fase "${entityName}" akan dihapus. Task di dalamnya akan menjadi tidak terikat fase.`;
+        break;
+      }
+
+      case "ADD_MEMBER":
+      case "ADD_PROJECT_MEMBER": {
+        entityType = "MEMBER";
+        entityName = p.userName || p.memberName || "Anggota Tim";
+        changes.push({ field: "Tambahkan Anggota", from: null, to: entityName });
+        break;
+      }
+
+      case "REMOVE_MEMBER":
+      case "REMOVE_PROJECT_MEMBER": {
+        entityType = "MEMBER";
+        entityName = p.userName || "Anggota Tim";
+        warning = `Anggota "${entityName}" akan dilepaskan dari proyek ini.`;
+        break;
+      }
+
+      default: {
+        entityName = act.summary;
+        break;
+      }
+    }
+
+    previews.push({
+      actionId: act.id,
+      type: act.type,
+      entityType,
+      entityName,
+      riskLevel: act.riskLevel,
+      isDestructive: act.isDestructive || false,
+      changes: changes.length > 0 ? changes : undefined,
+      warning,
+      summary: act.summary,
+    });
+  }
+
+  return previews;
+}
+
+/**
  * Deterministic Validation Layer with Dependency Graph & 4-Tier Risk Classification
  */
 export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): ValidationResult {
@@ -108,6 +286,11 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
   let highestRisk: ActionRiskLevel = "LOW";
   let requiresConfirmation = plan.requiresConfirmation;
   let clarificationState: ClarificationState | undefined = plan.clarificationState;
+
+  // 0. Batch Size Limit (Max 50 actions)
+  if (plan.actions.length > 50) {
+    globalErrors.push("Jumlah aksi dalam satu operasi batch melebihi batas maksimum 50 aksi.");
+  }
 
   // 1. Conflict & Duplicate Detection
   const { normalizedActions, conflicts } = normalizeActionConflicts(plan.actions);
@@ -604,17 +787,32 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
     hasDestructive ||
     highestRisk === "CRITICAL" ||
     highestRisk === "HIGH" ||
-    generatedActions.length > 2 ||
+    generatedActions.length > 1 ||
     generatedActions.some((a) => a.type === "CREATE_PROJECT")
   ) {
     planStatus = "NEEDS_CONFIRMATION";
     requiresConfirmation = true;
+    if (generatedActions.length > 1 && highestRisk === "LOW") {
+      highestRisk = "HIGH";
+    }
   }
 
   let assistantMessage = plan.assistantMessage;
   if (planStatus === "NEEDS_CLARIFICATION" && globalClarifications.length > 0) {
     assistantMessage = globalClarifications[0];
   }
+
+  const actionPreviews = generateActionPreviews(generatedActions, context);
+  const targetSnapshots = extractTargetEntitySnapshots(generatedActions, context);
+  const planFingerprint = generatedActions.length > 0
+    ? createPlanFingerprint({
+        userId: context.userId,
+        workspaceId: context.workspaceId,
+        planId: plan.id,
+        actions: generatedActions,
+        targetEntitySnapshots: targetSnapshots,
+      })
+    : undefined;
 
   const validatedPlan: AiPlan = {
     ...plan,
@@ -630,6 +828,9 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
     needsClarification: planStatus === "NEEDS_CLARIFICATION",
     clarificationsNeeded: globalClarifications.length > 0 ? globalClarifications : undefined,
     clarificationState,
+    actionPreviews,
+    planFingerprint,
+    confirmationStatus: planStatus === "NEEDS_CONFIRMATION" ? "NEEDS_CONFIRMATION" : "PLAN_READY",
   };
 
   return {

@@ -29,3 +29,7 @@ export function setIdempotencyResult(key: string, planId: string, result: AiExec
     timestamp: Date.now(),
   });
 }
+
+export function resetIdempotencyStore(): void {
+  executionCache.clear();
+}

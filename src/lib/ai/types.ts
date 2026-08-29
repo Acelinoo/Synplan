@@ -293,6 +293,53 @@ export interface AIProjectPlan {
   explicitConstraints?: ExplicitProjectConstraints;
 }
 
+export type ConfirmationStatus =
+  | "IDLE"
+  | "PLAN_READY"
+  | "NEEDS_CONFIRMATION"
+  | "CONFIRMED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "EXECUTING"
+  | "SUCCESS"
+  | "FAILED";
+
+export interface ActionPreviewItem {
+  actionId: string;
+  type: AiActionType | string;
+  entityType: "TASK" | "PROJECT" | "PHASE" | "MEMBER";
+  entityName: string;
+  riskLevel: ActionRiskLevel;
+  isDestructive: boolean;
+  changes?: { field: string; from?: string | null; to: string | null }[];
+  warning?: string;
+  summary: string;
+}
+
+export interface TargetEntitySnapshot {
+  id: string;
+  type: "TASK" | "PROJECT" | "PHASE" | "MEMBER";
+  name?: string;
+  updatedAt?: string;
+  status?: string;
+  version?: number;
+  hash?: string;
+}
+
+export interface PendingConfirmationRecord {
+  token: string;
+  planFingerprint: string;
+  userId: string;
+  workspaceId: string;
+  planId: string;
+  plan: AiPlan;
+  actions: AiAction[];
+  targetEntitySnapshots: TargetEntitySnapshot[];
+  createdAt: string;
+  expiresAt: string;
+  status: "PENDING" | "CONFIRMED" | "CANCELLED" | "EXPIRED" | "EXECUTED";
+}
+
 export interface AiPlan {
   id: string;
   userPrompt: string;
@@ -316,6 +363,11 @@ export interface AiPlan {
   confidence?: number;
   contextSummary?: string;
   idempotencyKey?: string;
+  planFingerprint?: string;
+  confirmationToken?: string;
+  confirmationExpiresAt?: string;
+  confirmationStatus?: ConfirmationStatus;
+  actionPreviews?: ActionPreviewItem[];
   createdAt: string;
 }
 
