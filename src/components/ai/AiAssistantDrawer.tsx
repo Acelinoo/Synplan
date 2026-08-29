@@ -267,6 +267,14 @@ export function AiAssistantDrawer() {
       }
       if (parsed.naturalLanguagePrompt) {
         promptForEngine = parsed.naturalLanguagePrompt;
+      } else if (!parsed.isComplete) {
+        addMessage({
+          id: `ast_${Date.now()}`,
+          role: "assistant",
+          content: `ℹ️ **Perintah belum lengkap**: Silakan tentukan target yang ingin diproses (contoh: \`${text} "Nama Target"\` atau pilih opsi dari menu saran).`,
+          timestamp: new Date().toISOString(),
+        });
+        return;
       }
     }
 
@@ -413,6 +421,23 @@ export function AiAssistantDrawer() {
           description: execResult.summary,
           variant: isPartial ? "warning" : "success",
         });
+
+        // Instant Realtime UI Refresh: Invalidate caches & reload active stores immediately
+        apiClient.invalidate("/api/projects");
+        apiClient.invalidate("/api/tasks");
+        apiClient.invalidate("/api/dashboard/summary");
+
+        apiClient.getProjects().then((pRes) => {
+          if (pRes.success && Array.isArray(pRes.data)) {
+            useWorkspaceStore.getState().setProjects(pRes.data);
+          }
+        }).catch(() => {});
+
+        apiClient.getTasks().then((tRes) => {
+          if (tRes.success && Array.isArray(tRes.data)) {
+            useTaskStore.getState().setTasks(tRes.data);
+          }
+        }).catch(() => {});
 
         fetchHistory();
       } else {

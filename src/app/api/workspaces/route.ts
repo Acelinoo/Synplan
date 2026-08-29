@@ -86,9 +86,18 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
+    const mappedWorkspaces = workspaces.map((w) => {
+      const myMembership = w.members.find((m) => m.userId === userId);
+      const role = myMembership?.role || (w.ownerId === userId ? "OWNER" : "MEMBER");
+      return {
+        ...w,
+        role,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: workspaces,
+      data: mappedWorkspaces,
     });
   } catch (error: any) {
     console.error("GET /api/workspaces error:", error?.message);

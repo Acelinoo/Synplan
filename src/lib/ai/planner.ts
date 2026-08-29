@@ -604,22 +604,24 @@ export function parseHeuristicIntent(
 
   if (isCreateProject) {
     const constraints = extractExplicitRequirements(cleanPrompt, context.serverTime);
-    let projectName = "New Project";
-    const nameMatch =
-      cleanPrompt.match(/(?:buat|buatin|buatkan|bikin|bikinin|create|setup|generate|susun|rancang|mulai|ingin|mau|ayo|punya project baru)\s+(?:sebuah\s+)?(?:projek|project|proyek|website|web|situs|aplikasi|app)?\s*([^,\.\n]+)/i) ||
-      cleanPrompt.match(/(?:untuk|usaha|tentang|buat|namanya)\s+([A-Za-z0-9\s\-]+?)(?:,|\.|\s+deadline|\s+target|$)/i);
+    let projectName = constraints.exactProjectName || "New Project";
+    if (!constraints.exactProjectName) {
+      const nameMatch =
+        cleanPrompt.match(/(?:buat|buatin|buatkan|bikin|bikinin|create|setup|generate|susun|rancang|mulai|ingin|mau|ayo|punya project baru)\s+(?:sebuah\s+)?(?:projek|project|proyek|website|web|situs|aplikasi|app)?\s*([^,\.\n]+)/i) ||
+        cleanPrompt.match(/(?:untuk|usaha|tentang|buat|namanya)\s+([A-Za-z0-9\s\-]+?)(?:,|\.|\s+deadline|\s+target|$)/i);
 
-    if (nameMatch && nameMatch[1]) {
-      let rawName = nameMatch[1].trim();
-      rawName = rawName
-        .replace(/^(?:sebuah\s+)?(?:baru\s+)?(?:namanya\s+)?(?:untuk\s+)?(?:kita\s+akan\s+)?(?:bikin\s+)?(?:buat\s+)?(?:project\s+)?(?:projek\s+)?(?:proyek\s+)?(?:baru\s+)?(?:buat\s+)?/i, "")
-        .replace(/\s+(?:deadline|tenggat|target|dengan|buat|dan|phases|tasks|selesai|tambahkan|ya).*$/i, "")
-        .trim();
-      if (rawName.length > 2) {
-        projectName = rawName
-          .split(" ")
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(" ");
+      if (nameMatch && nameMatch[1]) {
+        let rawName = nameMatch[1].trim();
+        rawName = rawName
+          .replace(/^(?:sebuah\s+)?(?:baru\s+)?(?:namanya\s+)?(?:untuk\s+)?(?:kita\s+akan\s+)?(?:bikin\s+)?(?:buat\s+)?(?:project\s+)?(?:projek\s+)?(?:proyek\s+)?(?:baru\s+)?(?:buat\s+)?/i, "")
+          .replace(/\s+(?:deadline|tenggat|target|dengan|buat|dan|phases|tasks|selesai|tambahkan|ya).*$/i, "")
+          .trim();
+        if (rawName.length > 2) {
+          projectName = rawName
+            .split(" ")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ");
+        }
       }
     }
 
@@ -678,7 +680,18 @@ export function parseHeuristicIntent(
       dueDate?: string;
     }> = [];
 
-    if (constraints.exactTaskTitles && constraints.exactTaskTitles.length > 0) {
+    if (constraints.structuredTasks && constraints.structuredTasks.length > 0) {
+      constraints.structuredTasks.forEach((st) => {
+        initialTasks.push({
+          title: st.title,
+          phaseName: st.phaseName || phases[0]?.name || "Planning",
+          assigneeName: st.assigneeName,
+          priority: st.priority || "HIGH",
+          status: "TODO",
+          dueDate: deadline,
+        });
+      });
+    } else if (constraints.exactTaskTitles && constraints.exactTaskTitles.length > 0) {
       // Exact user-specified tasks
       constraints.exactTaskTitles.forEach((tTitle, idx) => {
         const assignedPhase = phases[idx % phases.length]?.name;

@@ -147,6 +147,45 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         }
       }
 
+      // 4. Enroll Project Members (Creator, explicitly specified members, and task assignees)
+      const projectMemberUserIds = new Set<string>();
+      if (context.userId) {
+        projectMemberUserIds.add(context.userId);
+      }
+
+      if (Array.isArray(payload.memberNames)) {
+        for (const mName of payload.memberNames) {
+          const res = resolveWorkspaceMember(mName, context.members);
+          if (res.member) {
+            projectMemberUserIds.add(res.member.userId);
+          }
+        }
+      }
+
+      if (Array.isArray(payload.initialTasks)) {
+        for (const t of payload.initialTasks) {
+          let aId = t.assigneeId;
+          if (!aId && t.assigneeName) {
+            const res = resolveWorkspaceMember(t.assigneeName, context.members);
+            if (res.member) aId = res.member.userId;
+          }
+          if (aId) {
+            projectMemberUserIds.add(aId);
+          }
+        }
+      }
+
+      const assignedMemberIds = Array.from(projectMemberUserIds);
+      for (const mUserId of assignedMemberIds) {
+        await prisma.projectMember.create({
+          data: {
+            projectId: project.id,
+            userId: mUserId,
+            role: Role.MEMBER,
+          },
+        }).catch(() => {});
+      }
+
       // Update totalTasks count
       if (totalTasks > 0) {
         await prisma.project.update({
@@ -167,7 +206,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         color: project.color,
         totalTasks,
         completedTasks: 0,
-        assignedMemberIds: [],
+        assignedMemberIds,
         createdAt: project.createdAt.toISOString(),
         updatedAt: project.updatedAt.toISOString(),
       }, { workspaceId, projectId: project.id });

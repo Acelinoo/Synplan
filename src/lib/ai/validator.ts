@@ -554,31 +554,44 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
 
       case "UPDATE_PROJECT": {
         const p = action.payload;
-        const resProj = resolveWorkspaceProject(p.projectName || p.name || p.projectId || p.id, context, context.pendingClarification);
-        if (resProj.isAmbiguous) {
-          hasClarification = true;
-          actionStatus = "NEEDS_CLARIFICATION";
-          const prompt = resProj.clarificationPrompt || `Terdapat beberapa project cocok (${resProj.candidates.join(", ")}). Project mana yang ingin diubah?`;
-          globalClarifications.push(prompt);
-          if (!clarificationState) {
-            clarificationState = {
-              id: `clar_${Date.now()}_${idx}`,
-              workspaceId: context.workspaceId,
-              userId: context.userId,
-              entityType: "PROJECT",
-              query: p.projectName || p.name || p.projectId || "",
-              originalActionType: action.type,
-              candidates: resProj.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resProj.candidates.map((name) => ({ id: name, name })),
-              allowMultiSelect: false,
-              message: prompt,
-              createdAt: new Date().toISOString(),
-            };
+        let matchedProj = (p.projectId || p.id) ? context.projects.find((proj) => proj.id === (p.projectId || p.id)) : undefined;
+
+        if (!matchedProj) {
+          const projQuery = p.projectName || p.name || p.projectId || p.id;
+          if (projQuery) {
+            const resProj = resolveWorkspaceProject(projQuery, context, context.pendingClarification);
+            if (resProj.isAmbiguous) {
+              hasClarification = true;
+              actionStatus = "NEEDS_CLARIFICATION";
+              const prompt = resProj.clarificationPrompt || `Terdapat beberapa project cocok (${resProj.candidates.join(", ")}). Project mana yang ingin diubah?`;
+              globalClarifications.push(prompt);
+              if (!clarificationState) {
+                clarificationState = {
+                  id: `clar_${Date.now()}_${idx}`,
+                  workspaceId: context.workspaceId,
+                  userId: context.userId,
+                  entityType: "PROJECT",
+                  query: projQuery,
+                  originalActionType: action.type,
+                  candidates: resProj.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resProj.candidates.map((name) => ({ id: name, name })),
+                  allowMultiSelect: false,
+                  message: prompt,
+                  createdAt: new Date().toISOString(),
+                };
+              }
+            } else if (resProj.project) {
+              matchedProj = resProj.project;
+            } else if (resProj.notFound) {
+              actionErrors.push(`Project "${projQuery}" tidak ditemukan.`);
+            }
           }
-        } else if (resProj.project) {
-          p.projectId = resProj.project.id;
-          p.name = p.name || resProj.project.name;
-        } else if (resProj.notFound) {
-          actionErrors.push(`Project "${p.projectName || p.name || p.projectId || p.id}" tidak ditemukan.`);
+        }
+
+        if (matchedProj) {
+          p.projectId = matchedProj.id;
+          p.id = matchedProj.id;
+          p.name = p.name || matchedProj.name;
+          p.projectName = matchedProj.name;
         }
         if (p.deadline) {
           const rd = resolveNaturalDate(p.deadline);
@@ -589,68 +602,87 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
 
       case "UPDATE_TASK": {
         const p = action.payload;
-        const taskQuery = p.taskTitle || p.title || p.name || p.taskId;
-        const resTask = resolveWorkspaceTask(taskQuery, context, p.projectId);
-        if (resTask.isAmbiguous) {
-          hasClarification = true;
-          actionStatus = "NEEDS_CLARIFICATION";
-          const prompt = resTask.clarificationPrompt || `Terdapat beberapa task bernama "${taskQuery}": ${resTask.candidates.join(", ")}. Task mana yang ingin diubah?`;
-          globalClarifications.push(prompt);
-          if (!clarificationState) {
-            clarificationState = {
-              id: `clar_${Date.now()}_${idx}`,
-              workspaceId: context.workspaceId,
-              userId: context.userId,
-              entityType: "TASK",
-              query: taskQuery,
-              originalActionType: action.type,
-              candidates: resTask.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resTask.candidates.map((name) => ({ id: name, name })),
-              allowMultiSelect: false,
-              message: prompt,
-              createdAt: new Date().toISOString(),
-            };
-          }
-        } else if (resTask.task) {
-          p.taskId = resTask.task.id;
-          p.taskTitle = resTask.task.title;
-          p.projectId = resTask.task.projectId;
-        } else if (resTask.notFound) {
-          actionErrors.push(`Task "${taskQuery}" tidak ditemukan.`);
-        }
+        let matchedTask = (p.taskId || p.id) ? context.tasks.find((t) => t.id === (p.taskId || p.id)) : undefined;
 
-        if (p.assigneeName) {
-          if (p.unassign) {
-            p.assigneeId = null;
-          } else {
-            const resMem = resolveWorkspaceMember(p.assigneeName, context.members, context.pendingClarification);
-            if (resMem.member) {
-              p.assigneeId = resMem.member.userId;
-              p.assigneeName = resMem.member.name;
-            } else if (resMem.isAmbiguous) {
+        if (!matchedTask) {
+          const taskQuery = p.taskTitle || p.title || (p.name !== "Task Terkait" ? p.name : undefined) || p.taskId || p.id;
+          if (taskQuery) {
+            const resTask = resolveWorkspaceTask(taskQuery, context, p.projectId || context.currentProjectId);
+            if (resTask.isAmbiguous) {
               hasClarification = true;
               actionStatus = "NEEDS_CLARIFICATION";
-              const prompt = resMem.clarificationPrompt || `Ditemukan beberapa anggota cocok dengan "${p.assigneeName}": ${resMem.candidates.join(", ")}.`;
+              const prompt = resTask.clarificationPrompt || `Terdapat beberapa task bernama "${taskQuery}": ${resTask.candidates.join(", ")}. Task mana yang ingin diubah?`;
               globalClarifications.push(prompt);
-            } else if (resMem.notFound) {
-              actionWarnings.push(`Anggota "${p.assigneeName}" tidak terdaftar di workspace squad.`);
+              if (!clarificationState) {
+                clarificationState = {
+                  id: `clar_${Date.now()}_${idx}`,
+                  workspaceId: context.workspaceId,
+                  userId: context.userId,
+                  entityType: "TASK",
+                  query: taskQuery,
+                  originalActionType: action.type,
+                  candidates: resTask.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resTask.candidates.map((name) => ({ id: name, name })),
+                  allowMultiSelect: false,
+                  message: prompt,
+                  createdAt: new Date().toISOString(),
+                };
+              }
+            } else if (resTask.task) {
+              matchedTask = resTask.task;
+            } else if (resTask.notFound) {
+              actionErrors.push(`Task "${taskQuery}" tidak ditemukan.`);
             }
           }
         }
 
-        if (p.phaseName && p.projectId) {
-          const resPhase = resolveWorkspacePhase(p.phaseName, context, p.projectId);
-          if (resPhase.selectedEntity) {
-            p.phaseId = resPhase.selectedEntity.id;
-            p.phaseName = resPhase.selectedEntity.name;
-          } else if (resPhase.isAmbiguous) {
-            hasClarification = true;
-            actionStatus = "NEEDS_CLARIFICATION";
-            globalClarifications.push(resPhase.clarificationPrompt || `Terdapat beberapa fase cocok dengan "${p.phaseName}".`);
-          } else if (resPhase.notFound) {
-            actionWarnings.push(`Fase "${p.phaseName}" tidak ditemukan pada proyek ini.`);
-          }
+        if (matchedTask) {
+          p.taskId = matchedTask.id;
+          p.id = matchedTask.id;
+          p.taskTitle = matchedTask.title;
+          p.title = matchedTask.title;
+          p.projectId = matchedTask.projectId;
         }
 
+        if (p.assigneeName && !p.assigneeId) {
+          const resMem = resolveWorkspaceMember(p.assigneeName, context.members, context.pendingClarification);
+          if (resMem.member) {
+            p.assigneeId = resMem.member.userId;
+            p.assigneeName = resMem.member.name;
+          } else if (resMem.isAmbiguous) {
+            hasClarification = true;
+            actionStatus = "NEEDS_CLARIFICATION";
+            const prompt = resMem.clarificationPrompt || `Ditemukan beberapa anggota cocok dengan "${p.assigneeName}": ${resMem.candidates.join(", ")}.`;
+            globalClarifications.push(prompt);
+            if (!clarificationState) {
+              clarificationState = {
+                id: `clar_${Date.now()}_${idx}`,
+                workspaceId: context.workspaceId,
+                userId: context.userId,
+                entityType: "MEMBER",
+                query: p.assigneeName,
+                originalActionType: action.type,
+                candidates: resMem.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resMem.candidates.map((name) => ({ id: name, name })),
+                allowMultiSelect: false,
+                message: prompt,
+                createdAt: new Date().toISOString(),
+              };
+            }
+          } else if (resMem.notFound) {
+            actionWarnings.push(`Anggota "${p.assigneeName}" tidak terdaftar di workspace squad.`);
+          }
+        }
+        if (p.phaseName && !p.phaseId) {
+          const resPhase = resolveWorkspacePhase(p.phaseName, context, p.projectId || context.currentProjectId);
+          if (resPhase.isAmbiguous) {
+            hasClarification = true;
+            actionStatus = "NEEDS_CLARIFICATION";
+            const prompt = resPhase.clarificationPrompt || `Terdapat beberapa fase bernama "${p.phaseName}": ${resPhase.candidates.join(", ")}.`;
+            globalClarifications.push(prompt);
+          } else if (resPhase.selectedEntity) {
+            p.phaseId = resPhase.selectedEntity.id;
+            p.phaseName = resPhase.selectedEntity.name;
+          }
+        }
         if (p.dueDate) {
           const rd = resolveNaturalDate(p.dueDate);
           if (rd) p.dueDate = rd.isoDate;
@@ -692,65 +724,91 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
 
       case "DELETE_PROJECT": {
         const p = action.payload;
-        const resProj = resolveWorkspaceProject(p.name || p.id, context, context.pendingClarification);
-        if (resProj.isAmbiguous) {
-          hasClarification = true;
-          actionStatus = "NEEDS_CLARIFICATION";
-          const prompt = resProj.clarificationPrompt || `Terdapat beberapa project cocok (${resProj.candidates.join(", ")}). Project mana yang ingin dihapus?`;
-          globalClarifications.push(prompt);
-          if (!clarificationState) {
-            clarificationState = {
-              id: `clar_${Date.now()}_${idx}`,
-              workspaceId: context.workspaceId,
-              userId: context.userId,
-              entityType: "PROJECT",
-              query: p.name || p.id || "",
-              originalActionType: action.type,
-              candidates: resProj.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resProj.candidates.map((name) => ({ id: name, name })),
-              allowMultiSelect: false,
-              message: prompt,
-              createdAt: new Date().toISOString(),
-            };
+        let matchedProj = (p.id || p.projectId) ? context.projects.find((proj) => proj.id === (p.id || p.projectId)) : undefined;
+
+        if (!matchedProj) {
+          const projQuery = p.projectName || p.name || p.id || p.projectId;
+          if (projQuery) {
+            const resProj = resolveWorkspaceProject(projQuery, context, context.pendingClarification);
+            if (resProj.isAmbiguous) {
+              hasClarification = true;
+              actionStatus = "NEEDS_CLARIFICATION";
+              const prompt = resProj.clarificationPrompt || `Terdapat beberapa project cocok (${resProj.candidates.join(", ")}). Project mana yang ingin dihapus?`;
+              globalClarifications.push(prompt);
+              if (!clarificationState) {
+                clarificationState = {
+                  id: `clar_${Date.now()}_${idx}`,
+                  workspaceId: context.workspaceId,
+                  userId: context.userId,
+                  entityType: "PROJECT",
+                  query: projQuery,
+                  originalActionType: action.type,
+                  candidates: resProj.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resProj.candidates.map((name) => ({ id: name, name })),
+                  allowMultiSelect: false,
+                  message: prompt,
+                  createdAt: new Date().toISOString(),
+                };
+              }
+            } else if (resProj.project) {
+              matchedProj = resProj.project;
+            } else if (resProj.notFound) {
+              actionErrors.push(`Project "${projQuery}" tidak ditemukan di workspace ini.`);
+            }
           }
-        } else if (resProj.project) {
-          p.id = resProj.project.id;
-          p.name = resProj.project.name;
-        } else if (resProj.notFound) {
-          actionErrors.push(`Project "${p.name || p.id}" tidak ditemukan di workspace ini.`);
+        }
+
+        if (matchedProj) {
+          p.id = matchedProj.id;
+          p.projectId = matchedProj.id;
+          p.name = matchedProj.name;
+          p.projectName = matchedProj.name;
         }
         break;
       }
 
       case "DELETE_TASK": {
         const p = action.payload;
-        const taskQuery = p.name || p.id || p.title;
-        const resTask = resolveWorkspaceTask(taskQuery, context, p.projectId || context.currentProjectId);
-        if (resTask.isAmbiguous) {
-          hasClarification = true;
-          actionStatus = "NEEDS_CLARIFICATION";
-          const prompt = resTask.clarificationPrompt || `Terdapat beberapa task cocok dengan "${taskQuery}": ${resTask.candidates.join(", ")}. Task mana yang ingin dihapus?`;
-          globalClarifications.push(prompt);
-          if (!clarificationState) {
-            clarificationState = {
-              id: `clar_${Date.now()}_${idx}`,
-              workspaceId: context.workspaceId,
-              userId: context.userId,
-              entityType: "TASK",
-              query: taskQuery,
-              originalActionType: action.type,
-              candidates: resTask.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resTask.candidates.map((name) => ({ id: name, name })),
-              allowMultiSelect: false,
-              message: prompt,
-              createdAt: new Date().toISOString(),
-            };
+        let matchedTask = (p.id || p.taskId) ? context.tasks.find((t) => t.id === (p.id || p.taskId)) : undefined;
+
+        if (!matchedTask) {
+          const taskQuery = p.title || p.taskTitle || (p.name !== "Task Terkait" ? p.name : undefined) || p.id || p.taskId;
+          if (taskQuery) {
+            const resTask = resolveWorkspaceTask(taskQuery, context, p.projectId || context.currentProjectId);
+            if (resTask.isAmbiguous) {
+              hasClarification = true;
+              actionStatus = "NEEDS_CLARIFICATION";
+              const prompt = resTask.clarificationPrompt || `Terdapat beberapa task cocok dengan "${taskQuery}": ${resTask.candidates.join(", ")}. Task mana yang ingin dihapus?`;
+              globalClarifications.push(prompt);
+              if (!clarificationState) {
+                clarificationState = {
+                  id: `clar_${Date.now()}_${idx}`,
+                  workspaceId: context.workspaceId,
+                  userId: context.userId,
+                  entityType: "TASK",
+                  query: taskQuery,
+                  originalActionType: action.type,
+                  candidates: resTask.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resTask.candidates.map((name) => ({ id: name, name })),
+                  allowMultiSelect: false,
+                  message: prompt,
+                  createdAt: new Date().toISOString(),
+                };
+              }
+            } else if (resTask.task) {
+              matchedTask = resTask.task;
+            } else if (resTask.notFound) {
+              actionErrors.push(`Task "${taskQuery}" tidak ditemukan.`);
+            }
+          } else {
+            actionErrors.push("Target task tidak ditentukan untuk dihapus.");
           }
-        } else if (resTask.task) {
-          p.id = resTask.task.id;
-          p.name = resTask.task.title;
-          p.title = resTask.task.title;
-          p.projectId = resTask.task.projectId;
-        } else if (resTask.notFound) {
-          actionErrors.push(`Task "${taskQuery}" tidak ditemukan.`);
+        }
+
+        if (matchedTask) {
+          p.id = matchedTask.id;
+          p.taskId = matchedTask.id;
+          p.name = matchedTask.title;
+          p.title = matchedTask.title;
+          p.projectId = matchedTask.projectId;
         }
         break;
       }

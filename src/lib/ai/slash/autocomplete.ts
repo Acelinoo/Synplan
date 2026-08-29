@@ -103,6 +103,19 @@ export function getSlashSuggestions(
     ? rawTokens[rawTokens.length - 1].toLowerCase()
     : "";
 
+  // If the typed token is an exact match for a child subcommand that accepts arguments,
+  // automatically advance into that child node so entity suggestions are visible immediately!
+  if (!hasTrailingSpace && currentNode.subcommands && currentNode.subcommands.length > 0 && currentTypingQuery) {
+    const exactChild = currentNode.subcommands.find(
+      (sub) => sub.name.toLowerCase() === currentTypingQuery || sub.aliases?.some((a) => a.toLowerCase() === currentTypingQuery)
+    );
+    if (exactChild && exactChild.argumentType && exactChild.argumentType !== "none") {
+      currentNode = exactChild;
+      visitedNodes.push(exactChild);
+      tokenIdx++;
+    }
+  }
+
   const baseCommandPrefix = `/${visitedNodes.map((n) => n.name).join(" ")}`;
 
   // -------------------------------------------------------------------------

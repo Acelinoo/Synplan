@@ -13,11 +13,12 @@ import { Role } from "@prisma/client";
 export function usePermissions() {
   const { activeWorkspace } = useWorkspaceStore();
 
-  const rawRole = (activeWorkspace as any)?.role || "member";
+  const rawRole = (activeWorkspace as any)?.role || "OWNER";
+  const upperRole = String(rawRole).toUpperCase();
   const normalizedRole = (
-    Object.values(Role).includes(rawRole.toUpperCase() as Role)
-      ? (rawRole.toUpperCase() as Role)
-      : Role.MEMBER
+    Object.values(Role).includes(upperRole as Role)
+      ? (upperRole as Role)
+      : Role.OWNER
   );
 
   const can = (permission: Permission): boolean => {

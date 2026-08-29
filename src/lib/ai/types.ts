@@ -252,10 +252,17 @@ export interface AiAction<T extends AiActionType = AiActionType> {
 export type AiCreationMode = "STRICT" | "SMART";
 
 export interface ExplicitProjectConstraints {
+  exactProjectName?: string;
   exactPhaseCount?: number;
   exactPhaseNames?: string[];
   exactTaskCount?: number;
   exactTaskTitles?: string[];
+  structuredTasks?: Array<{
+    title: string;
+    phaseName?: string;
+    assigneeName?: string;
+    priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  }>;
   exactDeadline?: string;
   exactMembers?: string[];
   hasExplicitStructure: boolean;
