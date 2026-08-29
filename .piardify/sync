@@ -1,0 +1,29 @@
+#!/bin/sh
+ACTION="$1"
+TASK_ID="$2"
+EXTRA="$3"
+API_URL="https://piardify.vercel.app"
+TOKEN="piar_live_0f1a1d11a890f50fe50035b28b6e6c6b2e3b9b2d"
+PROJECT_ID="cmtdctr8a0001jv042bs0m9x0"
+
+if [ "$ACTION" = "start" ]; then
+  curl -s -X POST "$API_URL/api/agent/tasks/$TASK_ID/start?projectId=$PROJECT_ID" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"
+elif [ "$ACTION" = "complete" ]; then
+  curl -s -X POST "$API_URL/api/agent/tasks/$TASK_ID/complete?projectId=$PROJECT_ID" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"
+elif [ "$ACTION" = "fail" ]; then
+  curl -s -X POST "$API_URL/api/agent/tasks/$TASK_ID/fail?projectId=$PROJECT_ID" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"reason\":\"$EXTRA\"}"
+elif [ "$ACTION" = "current" ]; then
+  curl -s "$API_URL/api/agent/tasks/current?projectId=$PROJECT_ID" -H "Authorization: Bearer $TOKEN"
+elif [ "$ACTION" = "context" ]; then
+  curl -s "$API_URL/api/agent/project?projectId=$PROJECT_ID&section=context" -H "Authorization: Bearer $TOKEN"
+elif [ "$ACTION" = "design" ]; then
+  curl -s "$API_URL/api/agent/project?projectId=$PROJECT_ID&section=design" -H "Authorization: Bearer $TOKEN"
+elif [ "$ACTION" = "prd" ]; then
+  curl -s "$API_URL/api/agent/project?projectId=$PROJECT_ID&section=prd" -H "Authorization: Bearer $TOKEN"
+elif [ "$ACTION" = "taste" ]; then
+  curl -s "$API_URL/api/agent/project?projectId=$PROJECT_ID&section=taste-skill&skill=$TASK_ID" -H "Authorization: Bearer $TOKEN"
+elif [ "$ACTION" = "validate" ]; then
+  npx piardify validate-ui
+elif [ "$ACTION" = "theme" ]; then
+  npx piardify init-theme
+fi

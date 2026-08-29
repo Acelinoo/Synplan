@@ -1,0 +1,480 @@
+import {
+  AiAction,
+  AiExecutionContext,
+  AiPlan,
+  ActionExecutionStatus,
+  ActionRiskLevel,
+  ClarificationState,
+} from "./types";
+import { ACTION_REGISTRY } from "./registry";
+import { validateActionPermission } from "./permissions";
+import {
+  resolveWorkspaceMember,
+  resolveWorkspaceProject,
+  resolveWorkspaceTask,
+  resolveWorkspacePhase,
+} from "./entityResolver";
+import { resolveNaturalDate } from "./dateResolver";
+import { sortAndValidateDependencies } from "./dependencyGraph";
+
+export { resolveWorkspaceMember, resolveWorkspaceProject, resolveWorkspaceTask, resolveWorkspacePhase };
+
+export interface ValidationResult {
+  validatedPlan: AiPlan;
+  isValid: boolean;
+  errors: string[];
+}
+
+/**
+ * Normalizes duplicate and conflicting actions across an action list.
+ * E.g.:
+ * - Duplicate ADD_MEMBER for same userId/userName -> Deduplicated to single action.
+ * - Duplicate CREATE_TASK with identical title in same project -> Deduplicated to single action.
+ * - Conflicting ADD_MEMBER + REMOVE_MEMBER for same user -> Flagged.
+ */
+export function normalizeActionConflicts(actions: AiAction[]): {
+  normalizedActions: AiAction[];
+  conflicts: string[];
+} {
+  const normalized: AiAction[] = [];
+  const conflicts: string[] = [];
+
+  const addedMemberKeys = new Set<string>();
+  const removedMemberKeys = new Set<string>();
+  const createdTaskKeys = new Set<string>();
+
+  for (const act of actions) {
+    // 1. ADD_MEMBER Deduplication & Conflict Check
+    if (act.type === "ADD_MEMBER" || act.type === "ADD_PROJECT_MEMBER") {
+      const p = act.payload;
+      const memKey = (p.userId || p.userName || p.memberName || "").toLowerCase().trim();
+
+      if (memKey) {
+        if (removedMemberKeys.has(memKey)) {
+          conflicts.push(`Instruksi kontradiktif: Menambahkan sekaligus menghapus anggota "${p.userName || memKey}".`);
+        }
+        if (addedMemberKeys.has(memKey)) {
+          // Duplicate action detected — skip duplicate
+          continue;
+        }
+        addedMemberKeys.add(memKey);
+      }
+    }
+
+    // 2. REMOVE_MEMBER Conflict Check
+    if (act.type === "REMOVE_MEMBER" || act.type === "REMOVE_PROJECT_MEMBER") {
+      const p = act.payload;
+      const memKey = (p.userId || p.userName || "").toLowerCase().trim();
+
+      if (memKey) {
+        if (addedMemberKeys.has(memKey)) {
+          conflicts.push(`Instruksi kontradiktif: Menambahkan dan menghapus anggota "${p.userName || memKey}" dalam rencana yang sama.`);
+        }
+        removedMemberKeys.add(memKey);
+      }
+    }
+
+    // 3. CREATE_TASK Deduplication
+    if (act.type === "CREATE_TASK") {
+      const p = act.payload;
+      const taskKey = `${(p.projectId || p.projectName || "cur").toLowerCase()}:${(p.title || "").toLowerCase().trim()}`;
+
+      if (taskKey && p.title) {
+        if (createdTaskKeys.has(taskKey)) {
+          // Duplicate task title in same project — skip duplicate
+          continue;
+        }
+        createdTaskKeys.add(taskKey);
+      }
+    }
+
+    normalized.push(act);
+  }
+
+  return { normalizedActions: normalized, conflicts };
+}
+
+/**
+ * Deterministic Validation Layer with Dependency Graph & 4-Tier Risk Classification
+ */
+export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): ValidationResult {
+  const globalErrors: string[] = [];
+  const globalWarnings: string[] = [...(plan.warnings || [])];
+  const globalClarifications: string[] = [...(plan.clarificationsNeeded || [])];
+
+  let hasDestructive = false;
+  let hasForbidden = false;
+  let hasClarification = false;
+  let highestRisk: ActionRiskLevel = "LOW";
+  let requiresConfirmation = plan.requiresConfirmation;
+  let clarificationState: ClarificationState | undefined = plan.clarificationState;
+
+  // 1. Conflict & Duplicate Detection
+  const { normalizedActions, conflicts } = normalizeActionConflicts(plan.actions);
+  if (conflicts.length > 0) {
+    globalErrors.push(...conflicts);
+  }
+
+  // 2. Dependency Graph & Topological Ordering
+  const depResult = sortAndValidateDependencies(normalizedActions);
+  if (!depResult.isValid) {
+    globalErrors.push(...depResult.errors);
+  }
+
+  const actionsToValidate = depResult.sortedActions;
+
+  // Track pending project in compound multi-action plan
+  const sessionMap = new Map<string, string>();
+  const createProjAct = actionsToValidate.find((a) => a.type === "CREATE_PROJECT");
+  if (createProjAct?.payload?.name) {
+    sessionMap.set("pending_project", createProjAct.payload.name.toLowerCase().trim());
+  }
+
+  const generatedActions: AiAction[] = [];
+
+  for (let idx = 0; idx < actionsToValidate.length; idx++) {
+    const action = actionsToValidate[idx];
+    const actionErrors: string[] = [];
+    const actionWarnings: string[] = [];
+    let actionStatus: ActionExecutionStatus = "READY";
+
+    // Assign 4-Tier Risk Classification
+    let riskLevel: ActionRiskLevel = "MEDIUM";
+    if (action.type === "DELETE_PROJECT") {
+      riskLevel = "CRITICAL";
+      hasDestructive = true;
+      requiresConfirmation = true;
+    } else if (
+      action.type === "DELETE_TASK" ||
+      action.type === "DELETE_PHASE" ||
+      action.type === "REMOVE_MEMBER" ||
+      action.type === "REMOVE_PROJECT_MEMBER"
+    ) {
+      riskLevel = "HIGH";
+      hasDestructive = true;
+      requiresConfirmation = true;
+    } else if (action.type === "UPDATE_PROJECT" || action.type === "UPDATE_TASK") {
+      riskLevel = "HIGH";
+    } else {
+      riskLevel = "MEDIUM";
+    }
+
+    const riskWeights: Record<ActionRiskLevel, number> = {
+      LOW: 1,
+      MEDIUM: 2,
+      HIGH: 3,
+      CRITICAL: 4,
+    };
+
+    if (riskWeights[riskLevel] > riskWeights[highestRisk]) {
+      highestRisk = riskLevel;
+    }
+
+    // Permission Check
+    const perm = validateActionPermission(action.type, context.userRole);
+    if (!perm.allowed) {
+      hasForbidden = true;
+      actionStatus = "FORBIDDEN";
+      actionErrors.push(perm.reason || "Izin akses ditolak.");
+    }
+
+    // Registry Validation
+    const regSpec = ACTION_REGISTRY[action.type];
+    if (regSpec) {
+      action.riskLevel = riskLevel;
+      action.requiredRole = regSpec.requiredRole;
+
+      const regValidation = regSpec.validate(action.payload, context, sessionMap);
+      if (!regValidation.isValid) {
+        actionErrors.push(...regValidation.errors);
+      }
+      if (regValidation.warnings.length > 0) {
+        actionWarnings.push(...regValidation.warnings);
+      }
+      if (regValidation.needsClarification) {
+        hasClarification = true;
+        actionStatus = "NEEDS_CLARIFICATION";
+        globalClarifications.push(...regValidation.clarifications);
+      }
+    }
+
+    // Entity & Candidate Normalization per Action Type
+    switch (action.type) {
+      case "CREATE_PROJECT": {
+        const p = action.payload;
+        if (p.deadline) {
+          const rd = resolveNaturalDate(p.deadline);
+          if (rd) p.deadline = rd.isoDate;
+        }
+        if (Array.isArray(p.initialTasks)) {
+          p.initialTasks.forEach((t: any) => {
+            if (t.assigneeName) {
+              const res = resolveWorkspaceMember(t.assigneeName, context.members, context.pendingClarification);
+              if (res.member) {
+                t.assigneeId = res.member.userId;
+                t.assigneeName = res.member.name;
+              } else if (res.isAmbiguous) {
+                hasClarification = true;
+                actionStatus = "NEEDS_CLARIFICATION";
+                const prompt = res.clarificationPrompt || `Ditemukan beberapa anggota cocok dengan "${t.assigneeName}": ${res.candidates.join(", ")}.`;
+                globalClarifications.push(prompt);
+                if (!clarificationState) {
+                  clarificationState = {
+                    id: `clar_${Date.now()}_${idx}`,
+                    workspaceId: context.workspaceId,
+                    userId: context.userId,
+                    entityType: "MEMBER",
+                    query: t.assigneeName,
+                    originalActionType: action.type,
+                    candidates: res.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || res.candidates.map((name) => ({ id: name, name })),
+                    allowMultiSelect: false,
+                    message: prompt,
+                    createdAt: new Date().toISOString(),
+                  };
+                }
+              } else if (res.notFound) {
+                actionWarnings.push(`Anggota "${t.assigneeName}" tidak terdaftar di workspace squad.`);
+              }
+            }
+          });
+        }
+        break;
+      }
+
+      case "ADD_MEMBER":
+      case "ADD_PROJECT_MEMBER": {
+        const p = action.payload;
+        const rawName = p.userName || p.memberName;
+        if (rawName) {
+          const res = resolveWorkspaceMember(rawName, context.members, context.pendingClarification);
+
+          if (res.members && res.members.length > 1) {
+            p.userId = res.members[0].userId;
+            p.userName = res.members[0].name;
+
+            for (let mIdx = 1; mIdx < res.members.length; mIdx++) {
+              const nextMem = res.members[mIdx];
+              generatedActions.push({
+                ...action,
+                id: `${action.id}_multi_${mIdx}`,
+                summary: `Tambahkan ${nextMem.name} ke tim proyek.`,
+                payload: {
+                  ...action.payload,
+                  userId: nextMem.userId,
+                  userName: nextMem.name,
+                },
+                status: "READY",
+              });
+            }
+          } else if (res.member) {
+            p.userId = res.member.userId;
+            p.userName = res.member.name;
+          } else if (res.isAmbiguous) {
+            hasClarification = true;
+            actionStatus = "NEEDS_CLARIFICATION";
+            const prompt = res.clarificationPrompt || `Saya menemukan beberapa anggota yang cocok dengan "${rawName}": ${res.candidates.join(", ")}. Siapa yang Anda maksud?`;
+            globalClarifications.push(prompt);
+
+            if (!clarificationState) {
+              clarificationState = {
+                id: `clar_${Date.now()}_${idx}`,
+                workspaceId: context.workspaceId,
+                userId: context.userId,
+                entityType: "MEMBER",
+                query: rawName,
+                originalActionType: action.type,
+                candidates: res.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || res.candidates.map((name) => ({ id: name, name })),
+                allowMultiSelect: true,
+                message: prompt,
+                createdAt: new Date().toISOString(),
+              };
+            }
+          } else if (res.notFound) {
+            hasClarification = true;
+            actionStatus = "NEEDS_CLARIFICATION";
+            const prompt = `Saya tidak menemukan anggota bernama "${rawName}" di workspace ini.`;
+            globalClarifications.push(prompt);
+          }
+        }
+        break;
+      }
+
+      case "CREATE_TASK": {
+        const p = action.payload;
+        if (p.assigneeName && !p.assigneeId) {
+          const res = resolveWorkspaceMember(p.assigneeName, context.members, context.pendingClarification);
+          if (res.member) {
+            p.assigneeId = res.member.userId;
+            p.assigneeName = res.member.name;
+          } else if (res.isAmbiguous) {
+            hasClarification = true;
+            actionStatus = "NEEDS_CLARIFICATION";
+            const prompt = res.clarificationPrompt || `Ditemukan beberapa anggota cocok dengan "${p.assigneeName}": ${res.candidates.join(", ")}.`;
+            globalClarifications.push(prompt);
+            if (!clarificationState) {
+              clarificationState = {
+                id: `clar_${Date.now()}_${idx}`,
+                workspaceId: context.workspaceId,
+                userId: context.userId,
+                entityType: "MEMBER",
+                query: p.assigneeName,
+                originalActionType: action.type,
+                candidates: res.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || res.candidates.map((name) => ({ id: name, name })),
+                allowMultiSelect: false,
+                message: prompt,
+                createdAt: new Date().toISOString(),
+              };
+            }
+          } else if (res.notFound) {
+            actionWarnings.push(`Anggota "${p.assigneeName}" tidak terdaftar di workspace squad.`);
+          }
+        }
+        if (p.dueDate) {
+          const rd = resolveNaturalDate(p.dueDate);
+          if (rd) p.dueDate = rd.isoDate;
+        }
+        break;
+      }
+
+      case "ASSIGN_TASK": {
+        const p = action.payload;
+        const resMem = resolveWorkspaceMember(p.assigneeName, context.members, context.pendingClarification);
+        if (resMem.member) {
+          p.assigneeId = resMem.member.userId;
+          p.assigneeName = resMem.member.name;
+        } else if (resMem.isAmbiguous) {
+          hasClarification = true;
+          actionStatus = "NEEDS_CLARIFICATION";
+          const prompt = resMem.clarificationPrompt || `Ditemukan beberapa anggota cocok dengan "${p.assigneeName}": ${resMem.candidates.join(", ")}. Anggota mana yang ingin Anda assign?`;
+          globalClarifications.push(prompt);
+          if (!clarificationState) {
+            clarificationState = {
+              id: `clar_${Date.now()}_${idx}`,
+              workspaceId: context.workspaceId,
+              userId: context.userId,
+              entityType: "MEMBER",
+              query: p.assigneeName,
+              originalActionType: action.type,
+              candidates: resMem.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resMem.candidates.map((name) => ({ id: name, name })),
+              allowMultiSelect: false,
+              message: prompt,
+              createdAt: new Date().toISOString(),
+            };
+          }
+        } else if (resMem.notFound) {
+          hasClarification = true;
+          actionStatus = "NEEDS_CLARIFICATION";
+          globalClarifications.push(`Saya tidak menemukan anggota bernama "${p.assigneeName}" di workspace ini.`);
+        }
+        break;
+      }
+
+      case "DELETE_PROJECT": {
+        const p = action.payload;
+        const resProj = resolveWorkspaceProject(p.name || p.id, context, context.pendingClarification);
+        if (resProj.isAmbiguous) {
+          hasClarification = true;
+          actionStatus = "NEEDS_CLARIFICATION";
+          const prompt = resProj.clarificationPrompt || `Terdapat beberapa project cocok (${resProj.candidates.join(", ")}). Project mana yang ingin dihapus?`;
+          globalClarifications.push(prompt);
+          if (!clarificationState) {
+            clarificationState = {
+              id: `clar_${Date.now()}_${idx}`,
+              workspaceId: context.workspaceId,
+              userId: context.userId,
+              entityType: "PROJECT",
+              query: p.name || p.id || "",
+              originalActionType: action.type,
+              candidates: resProj.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resProj.candidates.map((name) => ({ id: name, name })),
+              allowMultiSelect: false,
+              message: prompt,
+              createdAt: new Date().toISOString(),
+            };
+          }
+        } else if (resProj.project) {
+          p.id = resProj.project.id;
+          p.name = resProj.project.name;
+        } else if (resProj.notFound) {
+          actionErrors.push(`Project "${p.name || p.id}" tidak ditemukan di workspace ini.`);
+        }
+        break;
+      }
+
+      case "DELETE_TASK": {
+        const p = action.payload;
+        const resTask = resolveWorkspaceTask(p.name || p.id, context, context.currentProjectId);
+        if (resTask.task) {
+          p.id = resTask.task.id;
+          p.name = resTask.task.title;
+        } else if (resTask.notFound) {
+          actionErrors.push(`Task "${p.name || p.id}" tidak ditemukan.`);
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+
+    if (actionErrors.length > 0) {
+      globalErrors.push(...actionErrors);
+      if (actionStatus === "READY") actionStatus = "INVALID";
+    }
+    if (actionWarnings.length > 0) {
+      globalWarnings.push(...actionWarnings);
+    }
+
+    generatedActions.push({
+      ...action,
+      riskLevel,
+      status: actionStatus,
+      warnings: actionWarnings,
+      errors: actionErrors,
+      requiresConfirmation: requiresConfirmation || hasDestructive || riskLevel === "CRITICAL" || riskLevel === "HIGH",
+    });
+  }
+
+  // Calculate Overall Plan Status
+  let planStatus: ActionExecutionStatus = "READY";
+  if (hasForbidden) planStatus = "FORBIDDEN";
+  else if (hasClarification || globalClarifications.length > 0) planStatus = "NEEDS_CLARIFICATION";
+  else if (globalErrors.length > 0) planStatus = "INVALID";
+  else if (
+    requiresConfirmation ||
+    hasDestructive ||
+    highestRisk === "CRITICAL" ||
+    highestRisk === "HIGH" ||
+    generatedActions.length > 2 ||
+    generatedActions.some((a) => a.type === "CREATE_PROJECT")
+  ) {
+    planStatus = "NEEDS_CONFIRMATION";
+    requiresConfirmation = true;
+  }
+
+  let assistantMessage = plan.assistantMessage;
+  if (planStatus === "NEEDS_CLARIFICATION" && globalClarifications.length > 0) {
+    assistantMessage = globalClarifications[0];
+  }
+
+  const validatedPlan: AiPlan = {
+    ...plan,
+    assistantMessage,
+    status: planStatus,
+    actions: generatedActions,
+    requiresConfirmation,
+    isDestructive: hasDestructive,
+    riskLevel: highestRisk,
+    workflowPolicy: plan.workflowPolicy || "PARTIAL_SUCCESS_ALLOWED",
+    warnings: globalWarnings,
+    errors: globalErrors.length > 0 ? globalErrors : undefined,
+    needsClarification: planStatus === "NEEDS_CLARIFICATION",
+    clarificationsNeeded: globalClarifications.length > 0 ? globalClarifications : undefined,
+    clarificationState,
+  };
+
+  return {
+    validatedPlan,
+    isValid: globalErrors.length === 0 && !hasForbidden,
+    errors: globalErrors,
+  };
+}

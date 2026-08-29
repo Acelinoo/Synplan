@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light Mode Tokens - Matching Figma Reference */
+    --background: #EAF4FC;
+    --foreground: #102A45;
+
+    --sidebar-bg: #FFFFFF;
+    --sidebar-foreground: #102A45;
+    --sidebar-border: #D6E4F0;
+    --sidebar-accent: #102A45;
+    --sidebar-accent-foreground: #FFFFFF;
+
+    --card: #FFFFFF;
+    --card-foreground: #102A45;
+    --card-border: #D9E8F5;
+
+    --popover: #FFFFFF;
+    --popover-foreground: #102A45;
+
+    --primary: #12395C;
+    --primary-foreground: #FFFFFF;
+    --primary-hover: #0E2C4A;
+    --primary-muted: rgba(18, 57, 92, 0.08);
+
+    --secondary: #F0F6FC;
+    --secondary-foreground: #102A45;
+
+    --muted: #E2EEF8;
+    --muted-foreground: #627D98;
+
+    --accent: #12395C;
+    --accent-foreground: #FFFFFF;
+
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+
+    --border: #D6E4F0;
+    --input: #D6E4F0;
+    --ring: #12395C;
+
+    /* Semantic Status */
+    --status-todo: #94A3B8;
+    --status-progress: #2563EB;
+    --status-review: #0284C7;
+    --status-done: #10B981;
+    --status-blocked: #EF4444;
+
+    /* Priority */
+    --priority-low: #64748B;
+    --priority-medium: #2563EB;
+    --priority-high: #F59E0B;
+    --priority-urgent: #EF4444;
+
+    --radius: 12px;
+  }
+
+  .dark {
+    /* Dark Mode Tokens - Matching Figma Dark Mode Screenshot */
+    --background: #081420;
+    --foreground: #F0F6FC;
+
+    --sidebar-bg: #081420;
+    --sidebar-foreground: #9FB3C8;
+    --sidebar-border: #12283A;
+    --sidebar-accent: #1A4B75;
+    --sidebar-accent-foreground: #FFFFFF;
+
+    --card: #0E2338;
+    --card-foreground: #F0F6FC;
+    --card-border: #183754;
+
+    --popover: #0E2338;
+    --popover-foreground: #F0F6FC;
+
+    --primary: #2072B8;
+    --primary-foreground: #FFFFFF;
+    --primary-hover: #1A5E99;
+    --primary-muted: rgba(32, 114, 184, 0.15);
+
+    --secondary: #12283A;
+    --secondary-foreground: #F0F6FC;
+
+    --muted: #142C44;
+    --muted-foreground: #7E9CB8;
+
+    --accent: #2072B8;
+    --accent-foreground: #FFFFFF;
+
+    --destructive: #EF4444;
+    --destructive-foreground: #FFFFFF;
+
+    --border: #183754;
+    --input: #183754;
+    --ring: #2072B8;
+
+    /* Semantic Status */
+    --status-todo: #94A3B8;
+    --status-progress: #3B82F6;
+    --status-review: #38BDF8;
+    --status-done: #10B981;
+    --status-blocked: #EF4444;
+
+    /* Priority */
+    --priority-low: #64748B;
+    --priority-medium: #3B82F6;
+    --priority-high: #F59E0B;
+    --priority-urgent: #EF4444;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  input, textarea, select {
+    color: inherit;
+    background-color: var(--card);
+  }
+  ::selection {
+    background-color: rgba(99, 102, 241, 0.2);
+    color: var(--primary);
+  }
+}
+
+/* Custom Scrollbar for High-Density Product Views */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.4);
+}
