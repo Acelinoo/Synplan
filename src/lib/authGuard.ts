@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@prisma/client";
 import { validateSessionToken, SESSION_COOKIE_NAME } from "@/lib/auth/session";
+import { Permission, hasPermission, ROLE_PERMISSIONS } from "@/lib/permissions";
 
 export interface AuthContext {
   userId: string;
   workspaceId: string;
   role: Role;
+  permissions: readonly Permission[];
   user: {
     id: string;
     name: string;
@@ -22,17 +24,19 @@ const roleHierarchy: Record<Role, number> = {
   VIEWER: 1,
 };
 
+const KNOWN_ROLES = new Set<string>([Role.OWNER, Role.ADMIN, Role.MEMBER, Role.VIEWER]);
+
 /**
  * Strictly verifies user identity, workspace membership, and RBAC privilege.
- * Prevents cross-tenant data leakage and unauthorized role escalation.
+ * Prevents cross-tenant data leakage, privilege escalation, and IDOR attacks.
  */
 export async function requireAuthGuard(
   req: NextRequest,
-  requiredRole: Role = Role.VIEWER,
+  requiredPermissionOrRole: Permission | Role = "workspace.view",
   overrideWorkspaceId?: string
 ): Promise<{ auth?: AuthContext; errorResponse?: NextResponse }> {
   try {
-    // 1. Extract session token or header credentials
+    // 1. Extract and validate session token or header credentials
     let userId: string | null = null;
     let workspaceId = overrideWorkspaceId || req.headers.get("x-synplan-workspace-id");
 
@@ -60,12 +64,12 @@ export async function requireAuthGuard(
       }
       userId = sessionResult.user.id;
     } else {
-      // Fallback: check x-synplan-user-id header (for API/test client simulation)
+      // Check x-synplan-user-id header (for automated testing / development simulation)
       const headerUserId = req.headers.get("x-synplan-user-id");
       if (headerUserId) {
         const userExists = await prisma.user.findUnique({
           where: { id: headerUserId },
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true, email: true, avatarUrl: true },
         });
         if (!userExists) {
           return {
@@ -77,19 +81,13 @@ export async function requireAuthGuard(
         }
         userId = userExists.id;
       } else {
-        // If neither session nor header is sent, resolve to primary authenticated user in DB (dev/fallback)
-        const defaultUser = await prisma.user.findFirst({
-          select: { id: true, name: true, email: true },
-        });
-        if (!defaultUser) {
-          return {
-            errorResponse: NextResponse.json(
-              { success: false, error: "Unauthorized: No active user session found" },
-              { status: 401 }
-            ),
-          };
-        }
-        userId = defaultUser.id;
+        // Strict security: No valid credentials provided
+        return {
+          errorResponse: NextResponse.json(
+            { success: false, error: "Unauthorized: Active user session required" },
+            { status: 401 }
+          ),
+        };
       }
     }
 
@@ -112,7 +110,7 @@ export async function requireAuthGuard(
       workspaceId = userMembership.workspaceId;
     }
 
-    // 3. Strict Workspace Membership & Isolation Check
+    // 3. Strict Workspace Membership & Tenant Boundary Isolation
     const member = await prisma.workspaceMember.findUnique({
       where: {
         workspaceId_userId: {
@@ -121,7 +119,7 @@ export async function requireAuthGuard(
         },
       },
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
       },
     });
 
@@ -134,20 +132,38 @@ export async function requireAuthGuard(
       };
     }
 
-    // 4. Role Hierarchy Enforcement
-    const memberLevel = roleHierarchy[member.role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
+    // 4. Permission / Role Check
+    const isRoleCheck = KNOWN_ROLES.has(requiredPermissionOrRole);
 
-    if (memberLevel < requiredLevel) {
-      return {
-        errorResponse: NextResponse.json(
-          {
-            success: false,
-            error: `Forbidden: Insufficient privileges. Required role: ${requiredRole}, current role: ${member.role}`,
-          },
-          { status: 403 }
-        ),
-      };
+    if (isRoleCheck) {
+      const requiredRole = requiredPermissionOrRole as Role;
+      const memberLevel = roleHierarchy[member.role] || 0;
+      const requiredLevel = roleHierarchy[requiredRole] || 0;
+
+      if (memberLevel < requiredLevel) {
+        return {
+          errorResponse: NextResponse.json(
+            {
+              success: false,
+              error: `Forbidden: Insufficient privileges. Required role: ${requiredRole}, current role: ${member.role}`,
+            },
+            { status: 403 }
+          ),
+        };
+      }
+    } else {
+      const requiredPermission = requiredPermissionOrRole as Permission;
+      if (!hasPermission(member.role, requiredPermission)) {
+        return {
+          errorResponse: NextResponse.json(
+            {
+              success: false,
+              error: `Forbidden: Insufficient privileges. Required permission: ${requiredPermission}, current role: ${member.role}`,
+            },
+            { status: 403 }
+          ),
+        };
+      }
     }
 
     return {
@@ -155,6 +171,7 @@ export async function requireAuthGuard(
         userId: member.userId,
         workspaceId: member.workspaceId,
         role: member.role,
+        permissions: ROLE_PERMISSIONS[member.role] || [],
         user: member.user,
       },
     };

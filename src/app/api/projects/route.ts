@@ -10,8 +10,8 @@ export async function GET(req: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
     const statusParam = searchParams.get("status")?.toUpperCase();
 
-    // Verify workspace membership & authorization
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.VIEWER, workspaceId || undefined);
+    // Verify workspace membership & authorization (projects.view)
+    const { auth, errorResponse } = await requireAuthGuard(req, "projects.view", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -81,7 +81,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { workspaceId, name, description, color, deadline, memberIds, status } = body;
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER, workspaceId || undefined);
+    // Strict Permission Guard: projects.create
+    const { auth, errorResponse } = await requireAuthGuard(req, "projects.create", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }

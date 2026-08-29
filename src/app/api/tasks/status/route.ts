@@ -40,8 +40,8 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    // Verify requesting user is authorized in this task's workspace
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER, existingTask.workspaceId);
+    // Verify requesting user is authorized in this task's workspace (tasks.change_status)
+    const { auth, errorResponse } = await requireAuthGuard(req, "tasks.change_status", existingTask.workspaceId);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }

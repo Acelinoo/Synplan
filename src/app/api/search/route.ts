@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
     const query = searchParams.get("q")?.trim();
     const workspaceId = searchParams.get("workspaceId");
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.VIEWER, workspaceId || undefined);
+    // Strict Permission Guard: search.view
+    const { auth, errorResponse } = await requireAuthGuard(req, "search.view", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }

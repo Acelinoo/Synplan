@@ -25,7 +25,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 
     const { auth, errorResponse } = await requireAuthGuard(
       req,
-      Role.MEMBER,
+      "phases.update",
       existingPhase.project.workspaceId
     );
     if (errorResponse || !auth) {
@@ -67,7 +67,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/phases/[id] - Safe Phase Deletion
+// DELETE /api/phases/[id] - Safe Phase Deletion (phases.delete - OWNER/ADMIN)
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
@@ -86,7 +86,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     const { auth, errorResponse } = await requireAuthGuard(
       req,
-      Role.MEMBER,
+      "phases.delete",
       existingPhase.project.workspaceId
     );
     if (errorResponse || !auth) {

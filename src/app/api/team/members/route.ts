@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
 import { createNotification } from "@/lib/notificationService";
+import { canModifyRole, canRemoveMember } from "@/lib/permissions";
 import { Role } from "@prisma/client";
 
 // GET /api/team/members - Workspace squad members with dynamic workload metrics
@@ -10,8 +11,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const workspaceId = searchParams.get("workspaceId");
 
-    // Verify workspace authorization
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.VIEWER, workspaceId || undefined);
+    // Strict Permission Guard: members.view
+    const { auth, errorResponse } = await requireAuthGuard(req, "members.view", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -112,13 +113,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/team/members - Invite a new squad member (Requires ADMIN or OWNER)
+// POST /api/team/members - Invite a new squad member
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { workspaceId, name, email, role } = body;
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.ADMIN, workspaceId || undefined);
+    // Strict Permission Guard: members.invite
+    const { auth, errorResponse } = await requireAuthGuard(req, "members.invite", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -127,6 +129,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Name and email are required" },
         { status: 400 }
+      );
+    }
+
+    const normalizedRole = (role ? role.toUpperCase() : Role.MEMBER) as Role;
+    if (![Role.OWNER, Role.ADMIN, Role.MEMBER, Role.VIEWER].includes(normalizedRole)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid role specified" },
+        { status: 400 }
+      );
+    }
+
+    // Role Hierarchy & Privilege Escalation Check:
+    // Admin cannot invite a member with role OWNER or ADMIN
+    const modCheck = canModifyRole(auth.role, Role.VIEWER, normalizedRole);
+    if (!modCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: modCheck.reason || "Forbidden: Insufficient privileges to assign this role." },
+        { status: 403 }
       );
     }
 
@@ -142,7 +162,7 @@ export async function POST(req: NextRequest) {
         data: {
           name: name.trim(),
           email: email.trim().toLowerCase(),
-          role: role || Role.MEMBER,
+          role: normalizedRole,
         },
       });
     }
@@ -168,7 +188,7 @@ export async function POST(req: NextRequest) {
       data: {
         workspaceId: targetWorkspaceId,
         userId: user.id,
-        role: role || Role.MEMBER,
+        role: normalizedRole,
         workloadScore: 0,
       },
       include: {
@@ -181,7 +201,7 @@ export async function POST(req: NextRequest) {
       data: {
         workspaceId: targetWorkspaceId,
         actorId: auth.user.id,
-        action: `Invited "${user.name}" to workspace squad as ${role || "MEMBER"}`,
+        action: `Invited "${user.name}" to workspace squad as ${normalizedRole}`,
         target: user.name,
         entityType: "WorkspaceMember",
         entityId: newMember.id,
@@ -195,7 +215,7 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         type: "TEAM_MEMBER_ADDED",
         title: "Added to Team Squad",
-        description: `You were added as a team squad member in this workspace as ${role || "MEMBER"}`,
+        description: `You were added as a team squad member in this workspace as ${normalizedRole}`,
         entityType: "TEAM",
         entityId: newMember.id,
         link: `/team`,
@@ -223,7 +243,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PUT /api/team/members - Update squad member role (Requires ADMIN/OWNER)
+// PUT /api/team/members - Update squad member role
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
@@ -244,22 +264,31 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Fetch target member to know their workspace
+    // 1. Resolve target member to verify resource exists
     const target = await prisma.workspaceMember.findUnique({ where: { id: memberId } });
     if (!target) {
       return NextResponse.json({ success: false, error: "Member not found" }, { status: 404 });
     }
 
-    // Verify caller is ADMIN or OWNER in this workspace
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.ADMIN, target.workspaceId);
+    // 2. Strict Permission Guard: members.update_role on target's actual workspace
+    const { auth, errorResponse } = await requireAuthGuard(req, "members.update_role", target.workspaceId);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // Only OWNER can modify another OWNER
-    if (target.role === Role.OWNER && auth.role !== Role.OWNER) {
+    // 3. Prevent owner self-demotion directly (Owner must transfer ownership)
+    if (target.userId === auth.userId && target.role === Role.OWNER && normalizedRole !== Role.OWNER) {
       return NextResponse.json(
-        { success: false, error: "Forbidden: Only workspace Owner can modify Owner role" },
+        { success: false, error: "Forbidden: Workspace Owner cannot demote themselves. Transfer ownership first." },
+        { status: 403 }
+      );
+    }
+
+    // 4. Role Hierarchy & Privilege Boundary Check
+    const roleCheck = canModifyRole(auth.role, target.role, normalizedRole);
+    if (!roleCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: roleCheck.reason || "Forbidden: Cannot perform this role modification." },
         { status: 403 }
       );
     }
@@ -269,6 +298,7 @@ export async function PUT(req: NextRequest) {
       data: { role: normalizedRole },
       include: { user: { select: { id: true, name: true, email: true } } },
     });
+
     return NextResponse.json({ success: true, data: updated, message: "Member role updated" });
   } catch (error: any) {
     return NextResponse.json(
@@ -278,7 +308,7 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// DELETE /api/team/members - Remove squad member (Requires ADMIN/OWNER)
+// DELETE /api/team/members - Remove squad member
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -300,25 +330,28 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Check if target exists
+    // 1. Resolve target member
     const target = await prisma.workspaceMember.findUnique({ where: { id: memberId } });
     if (!target) {
       return NextResponse.json({ success: false, error: "Member not found" }, { status: 404 });
     }
 
-    // Verify caller is ADMIN or OWNER in this workspace
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.ADMIN, target.workspaceId);
+    // 2. Strict Permission Guard: members.remove on target's actual workspace
+    const { auth, errorResponse } = await requireAuthGuard(req, "members.remove", target.workspaceId);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    if (target.role === Role.OWNER) {
+    // 3. Removal Boundary Verification
+    const removeCheck = canRemoveMember(auth.role, target.role);
+    if (!removeCheck.allowed) {
       return NextResponse.json(
-        { success: false, error: "Cannot remove workspace Owner." },
+        { success: false, error: removeCheck.reason || "Forbidden: Cannot remove this member." },
         { status: 403 }
       );
     }
 
+    // 4. Delete member from workspace
     await prisma.workspaceMember.delete({ where: { id: memberId } });
     return NextResponse.json({ success: true, message: "Member removed from workspace" });
   } catch (error: any) {

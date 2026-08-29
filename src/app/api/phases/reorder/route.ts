@@ -25,7 +25,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
     }
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER, project.workspaceId);
+    // Strict Permission Guard: phases.update
+    const { auth, errorResponse } = await requireAuthGuard(req, "phases.update", project.workspaceId);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }

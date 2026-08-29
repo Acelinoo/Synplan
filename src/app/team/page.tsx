@@ -12,6 +12,7 @@ import { WorkloadVisualizer } from "@/components/team/WorkloadVisualizer";
 import { AnimatedGrid } from "@/components/ui/animated-grid";
 import { Skeleton, SkeletonCard, SkeletonAvatar } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/apiClient";
+import { usePermissions } from "@/hooks/usePermissions";
 import { cn } from "@/lib/utils";
 
 const InviteMemberModal = dynamic(
@@ -22,6 +23,7 @@ const InviteMemberModal = dynamic(
 export default function TeamPage() {
   const { members, setMembers, addMember, activeWorkspace } = useWorkspaceStore();
   const { addToast } = useUiStore();
+  const { can } = usePermissions();
   const [isLoading, setIsLoading] = React.useState(members.length === 0);
   const [isInviteModalOpen, setIsInviteModalOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -219,14 +221,16 @@ export default function TeamPage() {
           </p>
         </div>
 
-        <MagnetButton
-          size="sm"
-          onClick={() => setIsInviteModalOpen(true)}
-          className="gap-1.5 text-xs font-semibold"
-        >
-          <UserPlus className="h-4 w-4" />
-          <span>Invite Member</span>
-        </MagnetButton>
+        {can("members.invite") && (
+          <MagnetButton
+            size="sm"
+            onClick={() => setIsInviteModalOpen(true)}
+            className="gap-1.5 text-xs font-semibold"
+          >
+            <UserPlus className="h-4 w-4" />
+            <span>Invite Member</span>
+          </MagnetButton>
+        )}
       </div>
 
       {/* Workload Visualizer Summary */}

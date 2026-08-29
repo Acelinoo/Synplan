@@ -6,6 +6,7 @@ import { useUiStore } from "@/store";
 import { MemberRole } from "@/types";
 import { Button } from "@/components/ui/button";
 import { MagnetButton } from "@/components/ui/magnet-button";
+import { usePermissions } from "@/hooks/usePermissions";
 import { cn } from "@/lib/utils";
 
 interface InviteMemberModalProps {
@@ -16,9 +17,12 @@ interface InviteMemberModalProps {
 
 export function InviteMemberModal({ isOpen, onClose, onInvite }: InviteMemberModalProps) {
   const { addToast } = useUiStore();
+  const { isAdmin } = usePermissions();
   const [email, setEmail] = React.useState("");
   const [name, setName] = React.useState("");
   const [role, setRole] = React.useState<MemberRole>("member");
+
+  const availableRoles: MemberRole[] = isAdmin ? ["member", "viewer"] : ["admin", "member", "viewer"];
 
   if (!isOpen) return null;
 
@@ -95,8 +99,8 @@ export function InviteMemberModal({ isOpen, onClose, onInvite }: InviteMemberMod
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-foreground">Workspace Role</label>
-            <div className="grid grid-cols-3 gap-2 pt-1">
-              {(["admin", "member", "viewer"] as MemberRole[]).map((r) => (
+            <div className={cn("grid gap-2 pt-1", availableRoles.length === 2 ? "grid-cols-2" : "grid-cols-3")}>
+              {availableRoles.map((r) => (
                 <button
                   key={r}
                   type="button"

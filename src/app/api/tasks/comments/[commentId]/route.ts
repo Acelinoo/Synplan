@@ -32,7 +32,8 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Comment not found" }, { status: 404 });
     }
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER, comment.task.workspaceId);
+    // Strict Permission Guard: tasks.update
+    const { auth, errorResponse } = await requireAuthGuard(req, "tasks.update", comment.task.workspaceId);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -81,7 +82,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Comment not found" }, { status: 404 });
     }
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER, comment.task.workspaceId);
+    // Strict Permission Guard: tasks.update
+    const { auth, errorResponse } = await requireAuthGuard(req, "tasks.update", comment.task.workspaceId);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }

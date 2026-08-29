@@ -21,7 +21,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404 });
     }
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.VIEWER, task.workspaceId);
+    // Strict Permission Guard: tasks.view
+    const { auth, errorResponse } = await requireAuthGuard(req, "tasks.view", task.workspaceId);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -69,7 +70,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404 });
     }
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER, task.workspaceId);
+    // Strict Permission Guard: tasks.update
+    const { auth, errorResponse } = await requireAuthGuard(req, "tasks.update", task.workspaceId);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }

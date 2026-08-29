@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.VIEWER, workspaceId || undefined);
+    // Strict Permission Guard: phases.view
+    const { auth, errorResponse } = await requireAuthGuard(req, "phases.view", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -61,7 +62,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { projectId, name, description, order, workspaceId } = body;
 
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER, workspaceId || undefined);
+    // Strict Permission Guard: phases.create
+    const { auth, errorResponse } = await requireAuthGuard(req, "phases.create", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }

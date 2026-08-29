@@ -1,46 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
-import { Role } from "@prisma/client";
 
 // PUT /api/workspaces/settings - Update workspace configuration & settings
 export async function PUT(req: NextRequest) {
   try {
-    // 1. RBAC Guard: Require at least ADMIN role to modify workspace settings
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.ADMIN);
-    if (errorResponse) return errorResponse;
-
     const body = await req.json();
     const { workspaceId, name, slug, logoUrl, actorId } = body;
 
-    if (!workspaceId) {
-      // If workspaceId is not specified, pick the active/first workspace
-      const defaultWorkspace = await prisma.workspace.findFirst();
-      if (!defaultWorkspace) {
-        return NextResponse.json(
-          { success: false, error: "No workspace available to update" },
-          { status: 404 }
-        );
-      }
-
-      const updated = await prisma.workspace.update({
-        where: { id: defaultWorkspace.id },
-        data: {
-          name: name ? name.trim() : defaultWorkspace.name,
-          slug: slug ? slug.trim().toLowerCase() : defaultWorkspace.slug,
-          logoUrl: logoUrl !== undefined ? logoUrl : defaultWorkspace.logoUrl,
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        data: updated,
-        message: "Workspace settings updated successfully",
-      });
+    let targetWorkspaceId = workspaceId;
+    if (!targetWorkspaceId) {
+      const headerWsId = req.headers.get("x-synplan-workspace-id");
+      if (headerWsId) targetWorkspaceId = headerWsId;
     }
 
+    if (!targetWorkspaceId) {
+      return NextResponse.json(
+        { success: false, error: "workspaceId is required to update settings" },
+        { status: 400 }
+      );
+    }
+
+    // 1. Resolve target workspace first
     const existing = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
+      where: { id: targetWorkspaceId },
     });
 
     if (!existing) {
@@ -50,12 +33,26 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // Check slug collision if slug is changing
+    // 2. Strict Permission Guard: workspace.update on this specific workspace
+    const { auth, errorResponse } = await requireAuthGuard(req, "workspace.update", existing.id);
+    if (errorResponse || !auth) {
+      return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    // 3. IDOR / Tenant Boundary Verification
+    if (auth.workspaceId !== existing.id) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: You cannot modify another workspace's settings" },
+        { status: 403 }
+      );
+    }
+
+    // 4. Check slug collision if slug is changing
     if (slug && slug !== existing.slug) {
       const slugCollision = await prisma.workspace.findUnique({
         where: { slug: slug.trim().toLowerCase() },
       });
-      if (slugCollision) {
+      if (slugCollision && slugCollision.id !== existing.id) {
         return NextResponse.json(
           { success: false, error: "Workspace slug is already in use by another workspace" },
           { status: 409 }
@@ -64,7 +61,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const updated = await prisma.workspace.update({
-      where: { id: workspaceId },
+      where: { id: existing.id },
       data: {
         name: name ? name.trim() : existing.name,
         slug: slug ? slug.trim().toLowerCase() : existing.slug,
@@ -77,7 +74,7 @@ export async function PUT(req: NextRequest) {
       await prisma.auditLog.create({
         data: {
           workspaceId: existing.id,
-          actorId: actorId || existing.ownerId,
+          actorId: auth.userId || actorId || existing.ownerId,
           action: "WORKSPACE_SETTINGS_UPDATE",
           target: `Updated workspace "${updated.name}" settings`,
         },

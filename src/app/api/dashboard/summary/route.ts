@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuthGuard } from "@/lib/authGuard";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const workspaceIdParam = searchParams.get("workspaceId");
 
-    // Resolve workspace
-    let targetWorkspaceId: string | undefined = searchParams.get("workspaceId") || undefined;
-    if (!targetWorkspaceId) {
-      const firstWs = await prisma.workspace.findFirst({ select: { id: true } });
-      targetWorkspaceId = firstWs?.id;
+    // Strict Permission Guard: workspace.view
+    const { auth, errorResponse } = await requireAuthGuard(req, "workspace.view", workspaceIdParam || undefined);
+    if (errorResponse || !auth) {
+      return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+
+    const targetWorkspaceId = auth.workspaceId;
 
     if (!targetWorkspaceId) {
       return NextResponse.json({

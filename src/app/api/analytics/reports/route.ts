@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuthGuard } from "@/lib/authGuard";
 import { TaskStatus, TaskPriority } from "@prisma/client";
 
 // GET /api/analytics/reports - Aggregated analytics metrics & distribution
@@ -8,12 +9,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const workspaceId = searchParams.get("workspaceId");
 
-    // Resolve workspace
-    let targetWorkspaceId: string | undefined = workspaceId || undefined;
-    if (!targetWorkspaceId) {
-      const firstWs = await prisma.workspace.findFirst({ select: { id: true } });
-      targetWorkspaceId = firstWs?.id;
+    // Strict Permission Guard: analytics.view
+    const { auth, errorResponse } = await requireAuthGuard(req, "analytics.view", workspaceId || undefined);
+    if (errorResponse || !auth) {
+      return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+
+    const targetWorkspaceId = auth.workspaceId;
 
     if (!targetWorkspaceId) {
       return NextResponse.json({

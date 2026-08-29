@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuthGuard } from "@/lib/authGuard";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,15 +10,26 @@ export async function GET(req: NextRequest) {
     const startDateParam = searchParams.get("startDate");
     const endDateParam = searchParams.get("endDate");
 
-    // Resolve workspace
-    let targetWorkspaceId: string | undefined = workspaceId || undefined;
-    if (!targetWorkspaceId) {
-      const firstWs = await prisma.workspace.findFirst({ select: { id: true } });
-      targetWorkspaceId = firstWs?.id;
+    // Strict Permission Guard: workspace.view
+    const { auth, errorResponse } = await requireAuthGuard(req, "workspace.view", workspaceId || undefined);
+    if (errorResponse || !auth) {
+      return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!targetWorkspaceId) {
-      return NextResponse.json({ success: true, data: [] });
+    const targetWorkspaceId = auth.workspaceId;
+
+    // Verify projectId belongs to authorized workspace if provided (IDOR check)
+    if (projectId) {
+      const proj = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { workspaceId: true },
+      });
+      if (!proj || proj.workspaceId !== targetWorkspaceId) {
+        return NextResponse.json(
+          { success: false, error: "Project not found in this workspace" },
+          { status: 404 }
+        );
+      }
     }
 
     // Date range boundaries

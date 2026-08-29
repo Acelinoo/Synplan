@@ -6,6 +6,7 @@ import { WorkspaceMember, MemberRole } from "@/types";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface MemberCardProps {
   member: WorkspaceMember;
@@ -21,6 +22,7 @@ const roleBadgeStyles: Record<MemberRole, { label: string; bg: string }> = {
 };
 
 export function MemberCard({ member, onRoleChange, onRemove }: MemberCardProps) {
+  const { can, isAdmin } = usePermissions();
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
 
@@ -70,65 +72,76 @@ export function MemberCard({ member, onRoleChange, onRemove }: MemberCardProps) 
                 {roleStyle.label}
               </span>
 
-              {/* Action Menu Trigger */}
-              <div className="relative">
-                <button
-                  onClick={() => setIsMenuOpen(!isMenuOpen)}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                  title="Member options"
-                >
-                  <MoreVertical className="h-3.5 w-3.5" />
-                </button>
+              {/* Action Menu Trigger - only visible if user has role update or member removal permissions */}
+              {(can("members.update_role") || can("members.remove")) && !isOwner && (
+                <div className="relative">
+                  <button
+                    onClick={() => setIsMenuOpen(!isMenuOpen)}
+                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    title="Member options"
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </button>
 
-                {isMenuOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setIsMenuOpen(false)}
-                    />
-                    <div className="absolute right-0 top-6 z-50 w-44 rounded-md border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95">
-                      <div className="px-2 py-1 text-[10px] font-mono text-muted-foreground uppercase font-bold">
-                        Change Role
-                      </div>
-                      {(["admin", "member", "viewer"] as MemberRole[]).map((r) => (
-                        <button
-                          key={r}
-                          disabled={isOwner}
-                          onClick={() => handleRoleSelect(r)}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-sm px-2 py-1 text-xs capitalize transition-colors text-left",
-                            member.role === r
-                              ? "bg-primary/10 text-primary font-semibold"
-                              : "text-foreground hover:bg-muted"
-                          )}
-                        >
-                          <span>{r}</span>
-                          {member.role === r && <Check className="h-3 w-3" />}
-                        </button>
-                      ))}
-
-                      <div className="my-1 h-px bg-border" />
-                      <button
-                        disabled={isOwner}
-                        onClick={() => {
-                          setIsMenuOpen(false);
-                          setIsDeleteConfirmOpen(true);
-                        }}
-                        className={cn(
-                          "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-left transition-colors",
-                          isOwner
-                            ? "text-muted-foreground/50 cursor-not-allowed"
-                            : "text-destructive hover:bg-destructive/10"
+                  {isMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsMenuOpen(false)}
+                      />
+                      <div className="absolute right-0 top-6 z-50 w-44 rounded-md border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95">
+                        {can("members.update_role") && (
+                          <>
+                            <div className="px-2 py-1 text-[10px] font-mono text-muted-foreground uppercase font-bold">
+                              Change Role
+                            </div>
+                            {(isAdmin ? (["member", "viewer"] as MemberRole[]) : (["admin", "member", "viewer"] as MemberRole[])).map((r) => (
+                              <button
+                                key={r}
+                                disabled={isOwner || (isAdmin && member.role === "admin")}
+                                onClick={() => handleRoleSelect(r)}
+                                className={cn(
+                                  "flex w-full items-center justify-between rounded-sm px-2 py-1 text-xs capitalize transition-colors text-left",
+                                  member.role === r
+                                    ? "bg-primary/10 text-primary font-semibold"
+                                    : "text-foreground hover:bg-muted",
+                                  (isOwner || (isAdmin && member.role === "admin")) && "opacity-50 cursor-not-allowed"
+                                )}
+                              >
+                                <span>{r}</span>
+                                {member.role === r && <Check className="h-3 w-3" />}
+                              </button>
+                            ))}
+                          </>
                         )}
-                        title={isOwner ? "Owner cannot be removed" : "Remove from workspace"}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        <span>Remove Member</span>
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+
+                        {can("members.remove") && (
+                          <>
+                            <div className="my-1 h-px bg-border" />
+                            <button
+                              disabled={isOwner || (isAdmin && member.role === "admin")}
+                              onClick={() => {
+                                setIsMenuOpen(false);
+                                setIsDeleteConfirmOpen(true);
+                              }}
+                              className={cn(
+                                "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-left transition-colors",
+                                (isOwner || (isAdmin && member.role === "admin"))
+                                  ? "text-muted-foreground/50 cursor-not-allowed"
+                                  : "text-destructive hover:bg-destructive/10"
+                              )}
+                              title={isOwner ? "Owner cannot be removed" : (isAdmin && member.role === "admin") ? "Admins cannot remove other admins" : "Remove from workspace"}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              <span>Remove Member</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

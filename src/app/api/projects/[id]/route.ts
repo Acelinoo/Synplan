@@ -37,8 +37,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
     }
 
-    // Verify requesting user is an authorized member of the project's workspace
-    const { errorResponse } = await requireAuthGuard(req, Role.VIEWER, project.workspaceId);
+    // Verify requesting user is an authorized member of the project's workspace (projects.view)
+    const { errorResponse } = await requireAuthGuard(req, "projects.view", project.workspaceId);
     if (errorResponse) return errorResponse;
 
     return NextResponse.json({ success: true, data: project });
@@ -67,8 +67,8 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
     }
 
-    // Verify user has MEMBER permissions in this specific project's workspace
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER, existing.workspaceId);
+    // Verify user has projects.update permission in this specific project's workspace
+    const { auth, errorResponse } = await requireAuthGuard(req, "projects.update", existing.workspaceId);
     if (errorResponse) return errorResponse;
 
     const updated = await prisma.project.update({
@@ -108,7 +108,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   }
 }
 
-// DELETE /api/projects/[id] - Delete project (Requires ADMIN/OWNER)
+// DELETE /api/projects/[id] - Delete project (Requires projects.delete - OWNER/ADMIN)
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
@@ -118,8 +118,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
     }
 
-    // Verify user has ADMIN permissions in this specific project's workspace
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.ADMIN, existing.workspaceId);
+    // Verify user has projects.delete permission in this specific project's workspace
+    const { auth, errorResponse } = await requireAuthGuard(req, "projects.delete", existing.workspaceId);
     if (errorResponse) return errorResponse;
 
     // Delete related project members and tasks in transaction
