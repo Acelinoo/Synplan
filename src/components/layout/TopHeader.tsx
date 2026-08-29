@@ -45,7 +45,7 @@ const routeNames: Record<string, string> = {
 export function TopHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { activeWorkspace } = useWorkspaceStore();
+  const { activeWorkspace, setActiveWorkspace, setWorkspaces, workspaces } = useWorkspaceStore();
   const { theme, setTheme, toggleSidebar, addToast } = useUiStore();
   const {
     notifications,
@@ -70,13 +70,31 @@ export function TopHeader() {
         const res = await apiClient.getSession();
         if (res.success && res.data?.authenticated && res.data.user) {
           setCurrentUser(res.data.user);
+
+          const userWorkspaces = Array.isArray(res.data.workspaces) ? res.data.workspaces : [];
+          setWorkspaces(userWorkspaces);
+
+          if (userWorkspaces.length > 0) {
+            // Check if existing activeWorkspace from store/localStorage belongs to this authenticated user
+            const currentActive = useWorkspaceStore.getState().activeWorkspace;
+            const validWorkspace = currentActive && userWorkspaces.find((w: any) => w.id === currentActive.id);
+
+            if (validWorkspace) {
+              setActiveWorkspace(validWorkspace);
+            } else {
+              // Stale or foreign workspace in localStorage: auto-select user's first valid workspace
+              setActiveWorkspace(userWorkspaces[0]);
+            }
+          } else {
+            setActiveWorkspace(null as any);
+          }
         }
       } catch (err) {
         console.warn("Failed to load user session in TopHeader:", err);
       }
     }
     loadUserSession();
-  }, []);
+  }, [setActiveWorkspace, setWorkspaces]);
 
   React.useEffect(() => {
     try {
@@ -178,6 +196,8 @@ export function TopHeader() {
     } catch (err) {
       console.warn("Logout API warning:", err);
     }
+    setActiveWorkspace(null as any);
+    setWorkspaces([]);
     addToast({
       title: "Signed Out",
       description: "You have securely signed out of your session.",

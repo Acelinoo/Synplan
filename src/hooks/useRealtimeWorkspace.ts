@@ -20,18 +20,56 @@ export function useRealtimeWorkspace() {
   );
   const [lastEvent, setLastEvent] = React.useState<RealtimeEvent | null>(null);
 
-  // 1. Auto-hydrate active workspace if empty
+  // 1. Auto-hydrate and validate active workspace against authenticated user's memberships
   React.useEffect(() => {
-    if (!activeWorkspace) {
-      apiClient.getWorkspaces().then((res) => {
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-          setWorkspaces(res.data);
-          setActiveWorkspace(res.data[0]);
+    let isMounted = true;
+    async function syncWorkspace() {
+      try {
+        // Preferred authoritative source: Authenticated session
+        const sessionRes = await apiClient.getSession();
+        if (!isMounted) return;
+
+        if (sessionRes.success && sessionRes.data?.authenticated) {
+          const userWorkspaces = Array.isArray(sessionRes.data.workspaces) ? sessionRes.data.workspaces : [];
+          if (userWorkspaces.length > 0) {
+            setWorkspaces(userWorkspaces);
+            const currentActive = useWorkspaceStore.getState().activeWorkspace;
+            const validActive = currentActive && userWorkspaces.find((w: any) => w.id === currentActive.id);
+            if (validActive) {
+              setActiveWorkspace(validActive);
+            } else {
+              setActiveWorkspace(userWorkspaces[0]);
+            }
+            return;
+          }
         }
-      }).catch((err) => {
-        console.warn("[Realtime] Failed to auto-hydrate workspace:", err);
-      });
+
+        // Fallback: User-scoped workspaces endpoint
+        const wsRes = await apiClient.getWorkspaces();
+        if (!isMounted) return;
+
+        if (wsRes.success && Array.isArray(wsRes.data) && wsRes.data.length > 0) {
+          setWorkspaces(wsRes.data);
+          const currentActive = useWorkspaceStore.getState().activeWorkspace;
+          const validActive = currentActive && wsRes.data.find((w: any) => w.id === currentActive.id);
+          if (validActive) {
+            setActiveWorkspace(validActive);
+          } else {
+            setActiveWorkspace(wsRes.data[0]);
+          }
+        }
+      } catch (err) {
+        console.warn("[Realtime] Failed to sync workspace:", err);
+      }
     }
+
+    if (!activeWorkspace) {
+      syncWorkspace();
+    }
+
+    return () => {
+      isMounted = false;
+    };
   }, [activeWorkspace, setActiveWorkspace, setWorkspaces]);
 
   // 2. Track global connection state

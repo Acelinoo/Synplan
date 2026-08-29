@@ -16,12 +16,13 @@ export interface Workspace {
   id: string;
   name: string;
   slug: string;
-  ownerId: string;
-  logoUrl?: string;
-  membersCount: number;
-  projectsCount: number;
-  createdAt: string;
-  updatedAt: string;
+  ownerId?: string;
+  logoUrl?: string | null;
+  role?: MemberRole | string;
+  membersCount?: number;
+  projectsCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Phase {

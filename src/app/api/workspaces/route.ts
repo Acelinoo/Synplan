@@ -1,10 +1,72 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateSessionToken, SESSION_COOKIE_NAME } from "@/lib/auth/session";
 
-// GET /api/workspaces - Fetch all workspaces
-export async function GET() {
+/**
+ * Resolves the authenticated user ID from session cookie or header
+ */
+async function resolveAuthUserId(req: NextRequest): Promise<string | null> {
+  // 1. Session token from cookie, Authorization header, or x-synplan-session-token
+  let token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      token = authHeader.substring(7).trim();
+    }
+  }
+  if (!token) {
+    token = req.headers.get("x-synplan-session-token") || undefined;
+  }
+
+  if (token) {
+    const sessionRes = await validateSessionToken(token);
+    if (sessionRes) {
+      return sessionRes.user.id;
+    }
+  }
+
+  // 2. Fallback: x-synplan-user-id header (for automated tests / dev)
+  const headerUserId = req.headers.get("x-synplan-user-id");
+  if (headerUserId) {
+    const user = await prisma.user.findUnique({
+      where: { id: headerUserId },
+      select: { id: true },
+    });
+    if (user) return user.id;
+  }
+
+  // 3. Fallback: default user in development mode
+  if (process.env.NODE_ENV !== "production") {
+    const defaultUser = await prisma.user.findFirst({ select: { id: true } });
+    if (defaultUser) return defaultUser.id;
+  }
+
+  return null;
+}
+
+// GET /api/workspaces - Fetch workspaces scoped strictly to authenticated user
+export async function GET(req: NextRequest) {
   try {
+    const userId = await resolveAuthUserId(req);
+
+    if (!userId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized: Active user session required to list workspaces",
+        },
+        { status: 401 }
+      );
+    }
+
     const workspaces = await prisma.workspace.findMany({
+      where: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
       include: {
         owner: {
           select: { id: true, name: true, email: true },
@@ -40,9 +102,10 @@ export async function GET() {
   }
 }
 
-// POST /api/workspaces - Create a new workspace
+// POST /api/workspaces - Create a new workspace for authenticated user
 export async function POST(req: NextRequest) {
   try {
+    const authUserId = await resolveAuthUserId(req);
     const body = await req.json();
     const { name, slug, ownerId } = body;
 
@@ -71,22 +134,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Default owner fallback if none provided
-    let effectiveOwnerId = ownerId;
+    // Default owner fallback to authenticated user
+    const effectiveOwnerId = authUserId || ownerId;
     if (!effectiveOwnerId) {
-      const defaultUser = await prisma.user.findFirst();
-      if (!defaultUser) {
-        const newUser = await prisma.user.create({
-          data: {
-            name: "Acelino (Marchelino K.)",
-            email: "acelino@synplan.dev",
-            role: "OWNER",
-          },
-        });
-        effectiveOwnerId = newUser.id;
-      } else {
-        effectiveOwnerId = defaultUser.id;
-      }
+      return NextResponse.json(
+        { success: false, error: "Unauthorized: Active user session required to create workspace" },
+        { status: 401 }
+      );
     }
 
     const workspace = await prisma.workspace.create({

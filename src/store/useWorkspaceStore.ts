@@ -52,7 +52,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setActiveWorkspace: (workspace) => {
     if (typeof window !== "undefined") {
       try {
-        localStorage.setItem("synplan_active_ws", JSON.stringify(workspace));
+        if (workspace && workspace.id) {
+          localStorage.setItem("synplan_active_ws", JSON.stringify(workspace));
+        } else {
+          localStorage.removeItem("synplan_active_ws");
+        }
       } catch (e) {
         // ignore
       }

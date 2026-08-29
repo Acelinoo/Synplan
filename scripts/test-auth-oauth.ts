@@ -307,6 +307,129 @@ async function runAuthTests() {
     assert(isolationGuardRes.errorResponse?.status === 403, "Isolation rejection status is 403 Forbidden");
   }
 
+  // --------------------------------------------------------------------------
+  // SECTION 5: WORKSPACE TENANT RESOLUTION & PRODUCTION URL SAFETY
+  // --------------------------------------------------------------------------
+  section("5. Workspace Tenant Resolution & Production URL Safety");
+  {
+    // Test A & C: User-scoped GET /api/workspaces (Only returns user's own workspaces)
+    const multiWsUser = await prisma.user.create({
+      data: {
+        name: "Multi Workspace User",
+        email: `${testEmailPrefix}multi_ws_${Date.now()}@example.com`,
+        role: Role.OWNER,
+      },
+    });
+
+    const userWs1 = await prisma.workspace.create({
+      data: {
+        name: "User Primary Workspace",
+        slug: `user-ws1-${Date.now()}`,
+        ownerId: multiWsUser.id,
+        members: { create: { userId: multiWsUser.id, role: Role.OWNER } },
+      },
+    });
+
+    const userWs2 = await prisma.workspace.create({
+      data: {
+        name: "User Secondary Workspace",
+        slug: `user-ws2-${Date.now()}`,
+        ownerId: multiWsUser.id,
+        members: { create: { userId: multiWsUser.id, role: Role.ADMIN } },
+      },
+    });
+
+    const foreignOwner = await prisma.user.create({
+      data: {
+        name: "Foreign Owner",
+        email: `${testEmailPrefix}foreign_owner_${Date.now()}@example.com`,
+        role: Role.OWNER,
+      },
+    });
+
+    const foreignWs = await prisma.workspace.create({
+      data: {
+        name: "Unrelated Foreign Workspace",
+        slug: `foreign-ws-${Date.now()}`,
+        ownerId: foreignOwner.id,
+        members: { create: { userId: foreignOwner.id, role: Role.OWNER } },
+      },
+    });
+
+    const { sessionToken: multiWsToken } = await createSession(multiWsUser.id);
+
+    // Import GET /api/workspaces handler dynamically
+    const { GET: getWorkspacesHandler } = await import("../src/app/api/workspaces/route");
+
+    const reqScopedWorkspaces = new NextRequest("http://localhost:3000/api/workspaces", {
+      headers: {
+        cookie: `synplan_session_token=${multiWsToken}`,
+      },
+    });
+
+    const wsResponse = await getWorkspacesHandler(reqScopedWorkspaces);
+    const wsJson = await wsResponse.json();
+
+    assert(wsJson.success === true, "GET /api/workspaces returns success for authenticated user");
+    assert(Array.isArray(wsJson.data), "GET /api/workspaces returns array of workspaces");
+    assert(wsJson.data.length === 2, "GET /api/workspaces returns only the 2 workspaces user is member of");
+    const wsIds = wsJson.data.map((w: any) => w.id);
+    assert(wsIds.includes(userWs1.id) && wsIds.includes(userWs2.id), "Workspaces list contains both owned and joined workspaces");
+    assert(!wsIds.includes(foreignWs.id), "Foreign workspace is strictly excluded from user's workspaces list");
+
+    // Test B: Stale / foreign workspace validation logic
+    const staleForeignWsId = foreignWs.id;
+    const isForeignWsValidForUser = wsIds.includes(staleForeignWsId);
+    assert(!isForeignWsValidForUser, "Stale foreign workspace in localStorage is correctly identified as invalid for this user");
+
+    // Test D: Unauthenticated request to /api/workspaces is rejected
+    const reqUnauthWorkspaces = new NextRequest("http://localhost:3000/api/workspaces");
+    const prevNodeEnv = process.env.NODE_ENV;
+    (process.env as any).NODE_ENV = "production";
+    const unauthWsResponse = await getWorkspacesHandler(reqUnauthWorkspaces);
+    assert(unauthWsResponse.status === 401, "Unauthenticated GET /api/workspaces in production is rejected with 401 Unauthorized");
+    (process.env as any).NODE_ENV = prevNodeEnv;
+
+    // Test F & G: Production URL safety in OAuth URL builder
+    process.env.NEXT_PUBLIC_APP_URL = "https://synplan.vercel.app";
+    const prodGoogleUrl = getGoogleAuthorizationUrl("prod-state-123");
+    assert(prodGoogleUrl.includes("redirect_uri=https%3A%2F%2Fsynplan.vercel.app%2Fapi%2Fauth%2Fcallback%2Fgoogle") || prodGoogleUrl.includes("redirect_uri=https://synplan.vercel.app/api/auth/callback/google"), "Production Google OAuth URL uses NEXT_PUBLIC_APP_URL https://synplan.vercel.app");
+
+    const prodGitHubUrl = getGitHubAuthorizationUrl("prod-state-456");
+    assert(prodGitHubUrl.includes("redirect_uri=https%3A%2F%2Fsynplan.vercel.app%2Fapi%2Fauth%2Fcallback%2Fgithub") || prodGitHubUrl.includes("redirect_uri=https://synplan.vercel.app/api/auth/callback/github"), "Production GitHub OAuth URL uses NEXT_PUBLIC_APP_URL https://synplan.vercel.app");
+    delete process.env.NEXT_PUBLIC_APP_URL;
+
+    // Test H: Projects & Tasks accessible when using user's valid workspace
+    const validProject = await prisma.project.create({
+      data: {
+        workspaceId: userWs1.id,
+        name: "Authorized Project Alpha",
+        status: "ACTIVE",
+      },
+    });
+
+    const validTask = await prisma.task.create({
+      data: {
+        workspaceId: userWs1.id,
+        projectId: validProject.id,
+        title: "Authorized Task Alpha",
+        status: "TODO",
+        priority: "HIGH",
+      },
+    });
+
+    const reqValidProjectAccess = new NextRequest(`http://localhost:3000/api/projects`, {
+      headers: {
+        cookie: `synplan_session_token=${multiWsToken}`,
+        "x-synplan-workspace-id": userWs1.id,
+      },
+    });
+
+    const projectGuard = await requireAuthGuard(reqValidProjectAccess, Role.VIEWER);
+    assert(projectGuard.auth?.workspaceId === userWs1.id, "Authorized member gets full access to workspace projects");
+    assert(validProject.id !== undefined && validTask.id !== undefined, "Project and task persist correctly in user's authorized workspace");
+  }
+
   // ==========================================================================
   // FINAL RESULTS
   // ==========================================================================

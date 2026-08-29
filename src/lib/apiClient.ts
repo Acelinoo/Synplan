@@ -44,20 +44,15 @@ async function request<T>(
   try {
     const customHeaders: Record<string, string> = {};
     let activeWsId = "";
-    let activeUserId = "";
 
     if (typeof window !== "undefined") {
       const storedWs = localStorage.getItem("synplan_active_ws");
       if (storedWs) {
         try {
           const parsed = JSON.parse(storedWs);
-          if (parsed?.id) {
+          if (parsed?.id && typeof parsed.id === "string") {
             activeWsId = parsed.id;
             customHeaders["x-synplan-workspace-id"] = parsed.id;
-          }
-          if (parsed?.ownerId) {
-            activeUserId = parsed.ownerId;
-            customHeaders["x-synplan-user-id"] = parsed.ownerId;
           }
         } catch (e) {
           // ignore
@@ -622,8 +617,15 @@ export const apiClient = {
     }>("/api/auth/session", undefined, { bypassCache: true });
   },
   async logout() {
-    return request<{ success: boolean; message: string }>("/api/auth/logout", {
+    const res = await request<{ success: boolean; message: string }>("/api/auth/logout", {
       method: "POST",
     });
+    memoryCache.clear();
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("synplan_active_ws");
+      } catch (e) {}
+    }
+    return res;
   },
 };

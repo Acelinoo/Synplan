@@ -2,11 +2,23 @@ import crypto from "crypto";
 import { OAuthUserProfile } from "./types";
 
 /**
- * Returns the base application URL configured in environment or default localhost
+ * Returns the base application URL configured in environment or default localhost.
+ * In production/Vercel environments, prioritizes NEXT_PUBLIC_APP_URL, APP_URL, or VERCEL_URL.
  */
 export function getAppBaseUrl(): string {
-  const url = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
-  return url.replace(/\/+$/, "");
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
+  }
+  if (process.env.APP_URL) {
+    return process.env.APP_URL.replace(/\/+$/, "");
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL.replace(/\/+$/, "")}`;
+  }
+  if (process.env.NODE_ENV === "production") {
+    return "https://synplan.vercel.app";
+  }
+  return "http://localhost:3000";
 }
 
 /**
