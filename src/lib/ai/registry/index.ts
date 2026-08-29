@@ -8,7 +8,12 @@ import {
   AiExecutionContext,
   ActionResultItem,
 } from "../types";
-import { resolveWorkspaceMember, resolveWorkspaceProject, resolveWorkspaceTask } from "../entityResolver";
+import {
+  resolveWorkspaceMember,
+  resolveWorkspaceProject,
+  resolveWorkspaceTask,
+  resolveWorkspacePhase,
+} from "../entityResolver";
 import { resolveNaturalDate } from "../dateResolver";
 
 export interface ActionDefinition<P = any, R = any> {
@@ -422,6 +427,19 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       });
       return !!found;
     },
+    rollback: async (payload, context, result) => {
+      if (result?.taskId) {
+        await prisma.task.deleteMany({
+          where: { id: result.taskId, workspaceId: context.workspaceId },
+        }).catch(() => {});
+        if (result?.projectId) {
+          await prisma.project.update({
+            where: { id: result.projectId },
+            data: { totalTasks: { decrement: 1 } },
+          }).catch(() => {});
+        }
+      }
+    },
   },
 
   ASSIGN_TASK: {
@@ -436,6 +454,10 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       const warnings: string[] = [];
       const clarifications: string[] = [];
       let needsClarification = false;
+
+      if (payload.unassign) {
+        return { isValid: true, errors: [], warnings: [], needsClarification: false, clarifications: [] };
+      }
 
       const res = resolveWorkspaceMember(payload.assigneeName, context.members);
       if (res.notFound) {
@@ -468,16 +490,23 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         throw new Error(`Task tidak ditemukan di workspace ini.`);
       }
 
-      let assigneeId = payload.assigneeId;
-      let assigneeName = payload.assigneeName;
-      const resMember = resolveWorkspaceMember(assigneeName, context.members);
-      if (resMember.member) {
-        assigneeId = resMember.member.userId;
-        assigneeName = resMember.member.name;
-      }
+      const previousAssigneeId = existingTask.assigneeId;
 
-      if (!assigneeId) {
-        throw new Error(`Anggota "${assigneeName}" tidak ditemukan.`);
+      let assigneeId: string | null = null;
+      let assigneeName = payload.assigneeName;
+
+      if (!payload.unassign) {
+        assigneeId = payload.assigneeId || null;
+        if (!assigneeId && assigneeName) {
+          const resMember = resolveWorkspaceMember(assigneeName, context.members);
+          if (resMember.member) {
+            assigneeId = resMember.member.userId;
+            assigneeName = resMember.member.name;
+          }
+        }
+        if (!assigneeId) {
+          throw new Error(`Anggota "${assigneeName}" tidak ditemukan.`);
+        }
       }
 
       const updated = await prisma.task.update({
@@ -485,7 +514,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         data: { assigneeId },
       });
 
-      if (assigneeId !== userId) {
+      if (assigneeId && assigneeId !== userId) {
         createNotification({
           workspaceId,
           userId: assigneeId,
@@ -501,21 +530,33 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       realtimeClient.broadcast(`workspace:${workspaceId}`, "TASK_ASSIGNED", {
         taskId: updated.id,
         assigneeId,
-        assigneeName,
+        assigneeName: assigneeName || null,
       }, { workspaceId, projectId: updated.projectId, taskId: updated.id });
+
+      const summaryText = payload.unassign
+        ? `Berhasil menghapus penugasan task "${updated.title}".`
+        : `Berhasil menugaskan task "${updated.title}" kepada ${assigneeName}.`;
 
       return {
         success: true,
-        data: { taskId: updated.id, assigneeId, assigneeName },
-        summary: `Berhasil menugaskan task "${updated.title}" kepada ${assigneeName}.`,
+        data: { taskId: updated.id, assigneeId, assigneeName, previousAssigneeId },
+        summary: summaryText,
       };
     },
     verify: async (payload, context, result) => {
-      if (!result?.taskId || !result?.assigneeId) return false;
+      if (!result?.taskId) return false;
       const task = await prisma.task.findFirst({
         where: { id: result.taskId, workspaceId: context.workspaceId },
       });
-      return task?.assigneeId === result.assigneeId;
+      return task?.assigneeId === (result.assigneeId || null);
+    },
+    rollback: async (payload, context, result) => {
+      if (result?.taskId) {
+        await prisma.task.update({
+          where: { id: result.taskId },
+          data: { assigneeId: result.previousAssigneeId || null },
+        }).catch(() => {});
+      }
     },
   },
 
@@ -585,10 +626,10 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     riskLevel: "MEDIUM",
     requiredRole: Role.MEMBER,
     requiredParams: [],
-    optionalParams: ["projectId", "projectName", "name", "deadline", "status", "description"],
+    optionalParams: ["projectId", "projectName", "name", "deadline", "status", "description", "color"],
     validate: () => ({ isValid: true, errors: [], warnings: [], needsClarification: false, clarifications: [] }),
     execute: async (payload, context, sessionMap) => {
-      const targetProjId = payload.projectId || sessionMap.get(payload.projectName?.toLowerCase() || "") || context.currentProjectId;
+      const targetProjId = payload.projectId || (payload.projectName ? sessionMap.get(payload.projectName.toLowerCase()) : undefined) || context.currentProjectId;
       if (!targetProjId) throw new Error("Project ID diperlukan untuk update.");
 
       // Tenant boundary verification
@@ -597,10 +638,20 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       });
       if (!project) throw new Error("Project tidak ditemukan di workspace ini.");
 
-      let deadlineDate: Date | undefined = undefined;
+      const previousState = {
+        name: project.name,
+        description: project.description,
+        deadline: project.deadline,
+        status: project.status,
+        color: project.color,
+      };
+
+      let deadlineDate: Date | undefined | null = undefined;
       if (payload.deadline) {
         const rd = resolveNaturalDate(payload.deadline);
         if (rd) deadlineDate = new Date(rd.isoDate);
+      } else if (payload.clearDeadline) {
+        deadlineDate = null;
       }
 
       const updated = await prisma.project.update({
@@ -608,14 +659,22 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         data: {
           name: payload.name || undefined,
           description: payload.description !== undefined ? payload.description : undefined,
-          deadline: deadlineDate,
+          deadline: deadlineDate !== undefined ? deadlineDate : undefined,
           status: payload.status || undefined,
+          color: payload.color || undefined,
         },
       });
 
+      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "PROJECT_UPDATED", {
+        id: updated.id,
+        name: updated.name,
+        status: updated.status.toLowerCase() as any,
+        deadline: updated.deadline ? updated.deadline.toISOString() : "",
+      }, { workspaceId: context.workspaceId, projectId: updated.id });
+
       return {
         success: true,
-        data: updated,
+        data: { ...updated, previousState },
         summary: `Berhasil memperbarui project "${updated.name}".`,
       };
     },
@@ -626,20 +685,43 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       });
       return !!found;
     },
+    rollback: async (payload, context, result) => {
+      if (result?.id && result?.previousState) {
+        await prisma.project.update({
+          where: { id: result.id },
+          data: result.previousState,
+        }).catch(() => {});
+      }
+    },
   },
 
   UPDATE_TASK: {
     name: "UPDATE_TASK",
-    description: "Memperbarui title, status, priority, atau deadline task",
+    description: "Memperbarui title, status, priority, deadline, phase, atau assignee task",
     riskLevel: "MEDIUM",
     requiredRole: Role.MEMBER,
     requiredParams: [],
-    optionalParams: ["taskId", "taskTitle", "title", "status", "priority", "dueDate", "assigneeName"],
+    optionalParams: [
+      "taskId",
+      "taskTitle",
+      "projectId",
+      "title",
+      "description",
+      "status",
+      "priority",
+      "dueDate",
+      "clearDueDate",
+      "phaseId",
+      "phaseName",
+      "assigneeId",
+      "assigneeName",
+      "unassign",
+    ],
     validate: () => ({ isValid: true, errors: [], warnings: [], needsClarification: false, clarifications: [] }),
     execute: async (payload, context) => {
       let targetTaskId = payload.taskId;
       if (!targetTaskId && payload.taskTitle) {
-        const resTask = resolveWorkspaceTask(payload.taskTitle, context);
+        const resTask = resolveWorkspaceTask(payload.taskTitle, context, payload.projectId);
         if (resTask.task) targetTaskId = resTask.task.id;
       }
       if (!targetTaskId) throw new Error("Task ID diperlukan untuk update.");
@@ -650,26 +732,133 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       });
       if (!existingTask) throw new Error("Task tidak ditemukan di workspace ini.");
 
-      let dueDate: Date | undefined = undefined;
+      const previousState = {
+        title: existingTask.title,
+        description: existingTask.description,
+        status: existingTask.status,
+        priority: existingTask.priority,
+        dueDate: existingTask.dueDate,
+        phaseId: existingTask.phaseId,
+        assigneeId: existingTask.assigneeId,
+        completedAt: existingTask.completedAt,
+      };
+
+      // Resolve Due Date
+      let dueDate: Date | undefined | null = undefined;
       if (payload.dueDate) {
         const rd = resolveNaturalDate(payload.dueDate);
         if (rd) dueDate = new Date(rd.isoDate);
+      } else if (payload.clearDueDate) {
+        dueDate = null;
+      }
+
+      // Resolve Phase Move (must be inside same project & workspace)
+      let phaseId: string | undefined | null = undefined;
+      if (payload.phaseId !== undefined) {
+        if (payload.phaseId === null) {
+          phaseId = null;
+        } else {
+          const targetPhase = await prisma.phase.findFirst({
+            where: {
+              id: payload.phaseId,
+              projectId: existingTask.projectId,
+              project: { workspaceId: context.workspaceId },
+            },
+          });
+          if (!targetPhase) {
+            throw new Error("Fase tujuan tidak ditemukan pada proyek yang sama.");
+          }
+          phaseId = targetPhase.id;
+        }
+      } else if (payload.phaseName) {
+        const resPhase = resolveWorkspacePhase(payload.phaseName, context, existingTask.projectId);
+        if (resPhase.selectedEntity) {
+          phaseId = resPhase.selectedEntity.id;
+        } else {
+          throw new Error(`Fase "${payload.phaseName}" tidak ditemukan di proyek ini.`);
+        }
+      }
+
+      // Resolve Assignee / Unassign
+      let assigneeId: string | undefined | null = undefined;
+      if (payload.unassign) {
+        assigneeId = null;
+      } else if (payload.assigneeId !== undefined) {
+        assigneeId = payload.assigneeId;
+      } else if (payload.assigneeName) {
+        const resMem = resolveWorkspaceMember(payload.assigneeName, context.members);
+        if (resMem.member) {
+          assigneeId = resMem.member.userId;
+        } else {
+          throw new Error(`Anggota "${payload.assigneeName}" tidak terdaftar di workspace squad.`);
+        }
+      }
+
+      // Status & completedAt handling
+      const nextStatus = payload.status ? (payload.status.toUpperCase() as TaskStatus) : undefined;
+      let completedAt: Date | undefined | null = undefined;
+      if (nextStatus) {
+        if (nextStatus === TaskStatus.DONE && existingTask.status !== TaskStatus.DONE) {
+          completedAt = new Date();
+        } else if (nextStatus !== TaskStatus.DONE && existingTask.status === TaskStatus.DONE) {
+          completedAt = null;
+        }
       }
 
       const updated = await prisma.task.update({
         where: { id: targetTaskId },
         data: {
           title: payload.title || undefined,
-          status: payload.status ? (payload.status.toUpperCase() as TaskStatus) : undefined,
+          description: payload.description !== undefined ? payload.description : undefined,
+          status: nextStatus,
           priority: payload.priority ? (payload.priority.toUpperCase() as TaskPriority) : undefined,
-          dueDate,
+          dueDate: dueDate !== undefined ? dueDate : undefined,
+          phaseId: phaseId !== undefined ? phaseId : undefined,
+          assigneeId: assigneeId !== undefined ? assigneeId : undefined,
+          completedAt: completedAt !== undefined ? completedAt : undefined,
         },
       });
 
+      // Notify Assignee if newly assigned
+      if (assigneeId && assigneeId !== existingTask.assigneeId && assigneeId !== context.userId) {
+        createNotification({
+          workspaceId: context.workspaceId,
+          userId: assigneeId,
+          type: "TASK_ASSIGNED",
+          title: "Task Assigned",
+          description: `You were assigned to "${updated.title}".`,
+          entityType: "TASK",
+          entityId: updated.id,
+          link: `/tasks?taskId=${updated.id}`,
+        }).catch(() => {});
+      }
+
+      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "TASK_UPDATED", {
+        id: updated.id,
+        projectId: updated.projectId,
+        title: updated.title,
+        status: updated.status.toLowerCase() as any,
+        priority: updated.priority.toLowerCase() as any,
+        assigneeId: updated.assigneeId,
+        phaseId: updated.phaseId,
+      }, { workspaceId: context.workspaceId, projectId: updated.projectId, taskId: updated.id });
+
+      const fieldChanges: string[] = [];
+      if (payload.title && payload.title !== previousState.title) fieldChanges.push(`judul "${updated.title}"`);
+      if (nextStatus && nextStatus !== previousState.status) fieldChanges.push(`status ${updated.status}`);
+      if (payload.priority && payload.priority !== previousState.priority) fieldChanges.push(`prioritas ${updated.priority}`);
+      if (dueDate !== undefined) fieldChanges.push(`deadline ${dueDate ? dueDate.toISOString().split("T")[0] : "dihapus"}`);
+      if (phaseId !== undefined) fieldChanges.push(`fase ${phaseId || "unassigned"}`);
+      if (assigneeId !== undefined) fieldChanges.push(payload.unassign ? "penugasan dihapus" : `ditugaskan ke ${payload.assigneeName || assigneeId}`);
+
+      const summaryText = fieldChanges.length > 0
+        ? `Berhasil memperbarui task "${updated.title}" (${fieldChanges.join(", ")}).`
+        : `Berhasil memperbarui task "${updated.title}".`;
+
       return {
         success: true,
-        data: updated,
-        summary: `Berhasil memperbarui task "${updated.title}".`,
+        data: { ...updated, previousState },
+        summary: summaryText,
       };
     },
     verify: async (payload, context, result) => {
@@ -678,6 +867,14 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         where: { id: result.id, workspaceId: context.workspaceId },
       });
       return !!found;
+    },
+    rollback: async (payload, context, result) => {
+      if (result?.id && result?.previousState) {
+        await prisma.task.update({
+          where: { id: result.id },
+          data: result.previousState,
+        }).catch(() => {});
+      }
     },
   },
 
@@ -713,9 +910,14 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       if (!project) throw new Error("Project tidak ditemukan di workspace ini.");
 
       await prisma.project.delete({ where: { id: targetId } });
+
+      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "PROJECT_DELETED", {
+        id: targetId,
+      }, { workspaceId: context.workspaceId, projectId: targetId });
+
       return {
         success: true,
-        data: { deletedId: targetId },
+        data: { deletedId: targetId, name: project.name },
         summary: `Project "${project.name}" berhasil dihapus secara permanen.`,
       };
     },
@@ -734,10 +936,14 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     riskLevel: "HIGH",
     requiredRole: Role.MEMBER,
     requiredParams: [],
-    optionalParams: ["id", "name"],
+    optionalParams: ["id", "name", "title", "projectId"],
     validate: () => ({ isValid: true, errors: [], warnings: [], needsClarification: false, clarifications: [] }),
     execute: async (payload, context) => {
-      const targetId = payload.id;
+      let targetId = payload.id;
+      if (!targetId && (payload.title || payload.name)) {
+        const resTask = resolveWorkspaceTask(payload.title || payload.name, context, payload.projectId);
+        if (resTask.task) targetId = resTask.task.id;
+      }
       if (!targetId) throw new Error("Task ID diperlukan untuk dihapus.");
 
       // Tenant boundary verification
@@ -746,10 +952,33 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       });
       if (!task) throw new Error("Task tidak ditemukan di workspace ini.");
 
+      const snapshot = {
+        workspaceId: task.workspaceId,
+        projectId: task.projectId,
+        phaseId: task.phaseId,
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        assigneeId: task.assigneeId,
+        dueDate: task.dueDate,
+      };
+
       await prisma.task.delete({ where: { id: targetId } });
+
+      await prisma.project.update({
+        where: { id: task.projectId },
+        data: { totalTasks: { decrement: 1 } },
+      }).catch(() => {});
+
+      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "TASK_DELETED", {
+        id: targetId,
+        projectId: task.projectId,
+      }, { workspaceId: context.workspaceId, projectId: task.projectId, taskId: targetId });
+
       return {
         success: true,
-        data: { deletedId: targetId },
+        data: { deletedId: targetId, title: task.title, snapshot },
         summary: `Task "${task.title}" berhasil dihapus.`,
       };
     },
@@ -760,6 +989,13 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       });
       return found === null;
     },
+    rollback: async (payload, context, result) => {
+      if (result?.snapshot) {
+        await prisma.task.create({
+          data: result.snapshot,
+        }).catch(() => {});
+      }
+    },
   },
 
   UPDATE_PHASE: {
@@ -768,7 +1004,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     riskLevel: "MEDIUM",
     requiredRole: Role.MEMBER,
     requiredParams: ["phaseId"],
-    optionalParams: ["name", "order"],
+    optionalParams: ["name", "order", "projectId"],
     validate: (payload) => ({ isValid: !!payload.phaseId, errors: payload.phaseId ? [] : ["Phase ID required"], warnings: [], needsClarification: false, clarifications: [] }),
     execute: async (payload, context) => {
       // Tenant boundary verification
@@ -780,11 +1016,28 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         throw new Error("Fase tidak ditemukan di workspace ini.");
       }
 
+      const previousState = {
+        name: phase.name,
+        order: phase.order,
+      };
+
       const updated = await prisma.phase.update({
         where: { id: payload.phaseId },
         data: { name: payload.name || undefined, order: payload.order !== undefined ? payload.order : undefined },
       });
-      return { success: true, data: updated, summary: `Berhasil memperbarui fase "${updated.name}".` };
+
+      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "PHASE_UPDATED", {
+        id: updated.id,
+        projectId: phase.projectId,
+        name: updated.name,
+        order: updated.order,
+      }, { workspaceId: context.workspaceId, projectId: phase.projectId });
+
+      return {
+        success: true,
+        data: { ...updated, previousState },
+        summary: `Berhasil memperbarui fase "${updated.name}".`,
+      };
     },
     verify: async (payload, context, result) => {
       if (!result?.id) return false;
@@ -796,6 +1049,14 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       });
       return !!found;
     },
+    rollback: async (payload, context, result) => {
+      if (result?.id && result?.previousState) {
+        await prisma.phase.update({
+          where: { id: result.id },
+          data: result.previousState,
+        }).catch(() => {});
+      }
+    },
   },
 
   DELETE_PHASE: {
@@ -804,7 +1065,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     riskLevel: "HIGH",
     requiredRole: Role.ADMIN,
     requiredParams: ["id"],
-    optionalParams: ["name"],
+    optionalParams: ["name", "projectId"],
     validate: () => ({ isValid: true, errors: [], warnings: [], needsClarification: false, clarifications: [] }),
     execute: async (payload, context) => {
       // Tenant boundary verification
@@ -817,7 +1078,17 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       }
 
       await prisma.phase.delete({ where: { id: payload.id } });
-      return { success: true, data: { deletedId: payload.id }, summary: `Fase berhasil dihapus.` };
+
+      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "PHASE_DELETED", {
+        id: payload.id,
+        projectId: phase.projectId,
+      }, { workspaceId: context.workspaceId, projectId: phase.projectId });
+
+      return {
+        success: true,
+        data: { deletedId: payload.id, name: phase.name },
+        summary: `Fase "${phase.name}" berhasil dihapus.`,
+      };
     },
     verify: async (payload, context, result) => {
       if (!result?.deletedId) return false;

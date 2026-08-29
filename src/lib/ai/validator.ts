@@ -369,6 +369,144 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
         break;
       }
 
+      case "UPDATE_PROJECT": {
+        const p = action.payload;
+        const resProj = resolveWorkspaceProject(p.projectName || p.name || p.projectId || p.id, context, context.pendingClarification);
+        if (resProj.isAmbiguous) {
+          hasClarification = true;
+          actionStatus = "NEEDS_CLARIFICATION";
+          const prompt = resProj.clarificationPrompt || `Terdapat beberapa project cocok (${resProj.candidates.join(", ")}). Project mana yang ingin diubah?`;
+          globalClarifications.push(prompt);
+          if (!clarificationState) {
+            clarificationState = {
+              id: `clar_${Date.now()}_${idx}`,
+              workspaceId: context.workspaceId,
+              userId: context.userId,
+              entityType: "PROJECT",
+              query: p.projectName || p.name || p.projectId || "",
+              originalActionType: action.type,
+              candidates: resProj.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resProj.candidates.map((name) => ({ id: name, name })),
+              allowMultiSelect: false,
+              message: prompt,
+              createdAt: new Date().toISOString(),
+            };
+          }
+        } else if (resProj.project) {
+          p.projectId = resProj.project.id;
+          p.name = p.name || resProj.project.name;
+        } else if (resProj.notFound) {
+          actionErrors.push(`Project "${p.projectName || p.name || p.projectId || p.id}" tidak ditemukan.`);
+        }
+        if (p.deadline) {
+          const rd = resolveNaturalDate(p.deadline);
+          if (rd) p.deadline = rd.isoDate;
+        }
+        break;
+      }
+
+      case "UPDATE_TASK": {
+        const p = action.payload;
+        const taskQuery = p.taskTitle || p.title || p.name || p.taskId;
+        const resTask = resolveWorkspaceTask(taskQuery, context, p.projectId);
+        if (resTask.isAmbiguous) {
+          hasClarification = true;
+          actionStatus = "NEEDS_CLARIFICATION";
+          const prompt = resTask.clarificationPrompt || `Terdapat beberapa task bernama "${taskQuery}": ${resTask.candidates.join(", ")}. Task mana yang ingin diubah?`;
+          globalClarifications.push(prompt);
+          if (!clarificationState) {
+            clarificationState = {
+              id: `clar_${Date.now()}_${idx}`,
+              workspaceId: context.workspaceId,
+              userId: context.userId,
+              entityType: "TASK",
+              query: taskQuery,
+              originalActionType: action.type,
+              candidates: resTask.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resTask.candidates.map((name) => ({ id: name, name })),
+              allowMultiSelect: false,
+              message: prompt,
+              createdAt: new Date().toISOString(),
+            };
+          }
+        } else if (resTask.task) {
+          p.taskId = resTask.task.id;
+          p.taskTitle = resTask.task.title;
+          p.projectId = resTask.task.projectId;
+        } else if (resTask.notFound) {
+          actionErrors.push(`Task "${taskQuery}" tidak ditemukan.`);
+        }
+
+        if (p.assigneeName) {
+          if (p.unassign) {
+            p.assigneeId = null;
+          } else {
+            const resMem = resolveWorkspaceMember(p.assigneeName, context.members, context.pendingClarification);
+            if (resMem.member) {
+              p.assigneeId = resMem.member.userId;
+              p.assigneeName = resMem.member.name;
+            } else if (resMem.isAmbiguous) {
+              hasClarification = true;
+              actionStatus = "NEEDS_CLARIFICATION";
+              const prompt = resMem.clarificationPrompt || `Ditemukan beberapa anggota cocok dengan "${p.assigneeName}": ${resMem.candidates.join(", ")}.`;
+              globalClarifications.push(prompt);
+            } else if (resMem.notFound) {
+              actionWarnings.push(`Anggota "${p.assigneeName}" tidak terdaftar di workspace squad.`);
+            }
+          }
+        }
+
+        if (p.phaseName && p.projectId) {
+          const resPhase = resolveWorkspacePhase(p.phaseName, context, p.projectId);
+          if (resPhase.selectedEntity) {
+            p.phaseId = resPhase.selectedEntity.id;
+            p.phaseName = resPhase.selectedEntity.name;
+          } else if (resPhase.isAmbiguous) {
+            hasClarification = true;
+            actionStatus = "NEEDS_CLARIFICATION";
+            globalClarifications.push(resPhase.clarificationPrompt || `Terdapat beberapa fase cocok dengan "${p.phaseName}".`);
+          } else if (resPhase.notFound) {
+            actionWarnings.push(`Fase "${p.phaseName}" tidak ditemukan pada proyek ini.`);
+          }
+        }
+
+        if (p.dueDate) {
+          const rd = resolveNaturalDate(p.dueDate);
+          if (rd) p.dueDate = rd.isoDate;
+        }
+        break;
+      }
+
+      case "UPDATE_PHASE": {
+        const p = action.payload;
+        const resPhase = resolveWorkspacePhase(p.name || p.phaseId, context, p.projectId);
+        if (resPhase.isAmbiguous) {
+          hasClarification = true;
+          actionStatus = "NEEDS_CLARIFICATION";
+          globalClarifications.push(resPhase.clarificationPrompt || `Terdapat beberapa fase cocok.`);
+        } else if (resPhase.selectedEntity) {
+          p.phaseId = resPhase.selectedEntity.id;
+          p.name = p.name || resPhase.selectedEntity.name;
+        } else if (resPhase.notFound) {
+          actionErrors.push(`Fase "${p.name || p.phaseId}" tidak ditemukan.`);
+        }
+        break;
+      }
+
+      case "DELETE_PHASE": {
+        const p = action.payload;
+        const resPhase = resolveWorkspacePhase(p.name || p.id, context, p.projectId);
+        if (resPhase.isAmbiguous) {
+          hasClarification = true;
+          actionStatus = "NEEDS_CLARIFICATION";
+          globalClarifications.push(resPhase.clarificationPrompt || `Terdapat beberapa fase cocok.`);
+        } else if (resPhase.selectedEntity) {
+          p.id = resPhase.selectedEntity.id;
+          p.name = resPhase.selectedEntity.name;
+        } else if (resPhase.notFound) {
+          actionErrors.push(`Fase "${p.name || p.id}" tidak ditemukan.`);
+        }
+        break;
+      }
+
       case "DELETE_PROJECT": {
         const p = action.payload;
         const resProj = resolveWorkspaceProject(p.name || p.id, context, context.pendingClarification);
@@ -402,12 +540,34 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
 
       case "DELETE_TASK": {
         const p = action.payload;
-        const resTask = resolveWorkspaceTask(p.name || p.id, context, context.currentProjectId);
-        if (resTask.task) {
+        const taskQuery = p.name || p.id || p.title;
+        const resTask = resolveWorkspaceTask(taskQuery, context, p.projectId || context.currentProjectId);
+        if (resTask.isAmbiguous) {
+          hasClarification = true;
+          actionStatus = "NEEDS_CLARIFICATION";
+          const prompt = resTask.clarificationPrompt || `Terdapat beberapa task cocok dengan "${taskQuery}": ${resTask.candidates.join(", ")}. Task mana yang ingin dihapus?`;
+          globalClarifications.push(prompt);
+          if (!clarificationState) {
+            clarificationState = {
+              id: `clar_${Date.now()}_${idx}`,
+              workspaceId: context.workspaceId,
+              userId: context.userId,
+              entityType: "TASK",
+              query: taskQuery,
+              originalActionType: action.type,
+              candidates: resTask.candidateDetails?.map((c) => ({ id: c.id, name: c.name, secondaryText: c.secondaryText })) || resTask.candidates.map((name) => ({ id: name, name })),
+              allowMultiSelect: false,
+              message: prompt,
+              createdAt: new Date().toISOString(),
+            };
+          }
+        } else if (resTask.task) {
           p.id = resTask.task.id;
           p.name = resTask.task.title;
+          p.title = resTask.task.title;
+          p.projectId = resTask.task.projectId;
         } else if (resTask.notFound) {
-          actionErrors.push(`Task "${p.name || p.id}" tidak ditemukan.`);
+          actionErrors.push(`Task "${taskQuery}" tidak ditemukan.`);
         }
         break;
       }

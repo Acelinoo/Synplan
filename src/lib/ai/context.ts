@@ -48,7 +48,9 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
       select: {
         id: true,
         projectId: true,
+        phaseId: true,
         title: true,
+        description: true,
         status: true,
         priority: true,
         assigneeId: true,
@@ -113,7 +115,9 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
     tasks: tasks.map((t) => ({
       id: t.id,
       projectId: t.projectId,
+      phaseId: t.phaseId,
       title: t.title,
+      description: t.description,
       status: t.status,
       priority: t.priority,
       assigneeId: t.assigneeId,

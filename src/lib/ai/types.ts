@@ -182,11 +182,14 @@ export interface UpdateTaskPayload {
   title?: string;
   description?: string;
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-  status?: "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE";
+  status?: "TODO" | "IN_PROGRESS" | "IN_REVIEW" | "DONE" | "BLOCKED";
   assigneeName?: string;
   assigneeId?: string | null;
+  unassign?: boolean;
   dueDate?: string;
-  phaseId?: string;
+  clearDueDate?: boolean;
+  phaseId?: string | null;
+  phaseName?: string;
 }
 
 export interface AssignTaskPayload {
@@ -316,6 +319,8 @@ export interface AiPlan {
   createdAt: string;
 }
 
+export const MAX_BATCH_ACTIONS = 50;
+
 export interface AiExecutionContext {
   workspaceId: string;
   workspaceName?: string;
@@ -351,7 +356,9 @@ export interface AiExecutionContext {
   tasks: Array<{
     id: string;
     projectId: string;
+    phaseId?: string | null;
     title: string;
+    description?: string | null;
     status: string;
     priority: string;
     assigneeId?: string | null;
