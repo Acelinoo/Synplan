@@ -12,7 +12,19 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, mode, currentProjectId, currentTaskId, activePath, conversationHistory, pendingClarification } = body;
+    const {
+      prompt,
+      mode,
+      currentProjectId,
+      currentPhaseId,
+      currentTaskId,
+      currentMemberId,
+      currentView,
+      recentEntities,
+      activePath,
+      conversationHistory,
+      pendingClarification,
+    } = body;
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return NextResponse.json(
@@ -27,7 +39,12 @@ export async function POST(req: NextRequest) {
       userId: auth.userId,
       userRole: auth.role,
       currentProjectId,
+      currentPhaseId,
       currentTaskId,
+      currentMemberId,
+      currentView,
+      recentEntities,
+      conversationHistory,
       activePath,
     });
 

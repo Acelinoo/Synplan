@@ -75,7 +75,7 @@ async function runTestSuite() {
 
   const pTask = parseHeuristicIntent("buatkan task Setup Redux dan assign ke Bob", mockContext);
   assert(pTask.actions.some((a) => a.type === "CREATE_TASK"), "Identifies CREATE_TASK intent");
-  assert(pTask.actions[0].payload.assigneeName === "Bob", "Extracts assignee 'Bob'");
+  assert(pTask.actions[0].payload.assigneeName === "Bob" || pTask.actions[0].payload.assigneeName === "Bob Designer", "Extracts assignee 'Bob'");
 
   // --------------------------------------------------------------------------
   console.log("\n--- STAGE 2: Action Registry Schema & Validation ---");

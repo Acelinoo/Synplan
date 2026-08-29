@@ -586,7 +586,16 @@ export const apiClient = {
     prompt: string;
     mode?: "STRICT" | "SMART";
     currentProjectId?: string;
+    currentPhaseId?: string;
     currentTaskId?: string;
+    currentMemberId?: string;
+    currentView?: string;
+    recentEntities?: {
+      projects?: string[];
+      phases?: string[];
+      tasks?: string[];
+      members?: string[];
+    };
     activePath?: string;
     conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
     pendingClarification?: any;

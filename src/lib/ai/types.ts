@@ -319,6 +319,44 @@ export interface AiPlan {
   createdAt: string;
 }
 
+export type ContextConfidenceLevel =
+  | "EXACT"
+  | "CONTEXT_EXACT"
+  | "RECENT_EXACT"
+  | "DEFAULT"
+  | "AMBIGUOUS"
+  | "MISSING";
+
+export type ContextResolutionSource =
+  | "EXPLICIT"
+  | "SLASH_ARGUMENT"
+  | "UI_CONTEXT"
+  | "CONVERSATION"
+  | "DEFAULT";
+
+export interface ContextResolutionResult<T> {
+  entity?: T;
+  entityType: EntityType;
+  entityId?: string;
+  entityName?: string;
+  source: ContextResolutionSource;
+  confidence: ContextConfidenceLevel;
+  confidenceScore: number;
+  status: EntityMatchStatus;
+  isAmbiguous: boolean;
+  candidates: string[];
+  candidateDetails?: ResolvedEntityCandidate<T>[];
+  clarificationPrompt?: string;
+  isStale?: boolean;
+}
+
+export interface RecentEntities {
+  projects?: string[];
+  phases?: string[];
+  tasks?: string[];
+  members?: string[];
+}
+
 export const MAX_BATCH_ACTIONS = 50;
 
 export interface AiExecutionContext {
@@ -329,7 +367,14 @@ export interface AiExecutionContext {
   userRole?: Role | string;
   currentProjectId?: string;
   currentProjectName?: string;
+  currentPhaseId?: string;
+  currentPhaseName?: string;
   currentTaskId?: string;
+  currentTaskTitle?: string;
+  currentMemberId?: string;
+  currentMemberName?: string;
+  currentView?: string;
+  recentEntities?: RecentEntities;
   activePath?: string;
   serverTime?: string;
   isMock?: boolean;

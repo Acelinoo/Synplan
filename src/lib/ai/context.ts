@@ -1,23 +1,41 @@
 import { prisma } from "@/lib/prisma";
 import { Role } from "@prisma/client";
-import { AiExecutionContext } from "./types";
+import { AiExecutionContext, RecentEntities } from "./types";
+import { validateAndSanitizeContext, extractRecentEntitiesFromHistory } from "./contextResolver";
 
 interface GetContextOptions {
   workspaceId: string;
   userId: string;
   userRole?: Role | string;
   currentProjectId?: string;
+  currentPhaseId?: string;
   currentTaskId?: string;
+  currentMemberId?: string;
+  currentView?: string;
+  recentEntities?: RecentEntities;
+  conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
   activePath?: string;
 }
 
 /**
  * Builds rich server-side AI execution context for the requested workspace.
- * Resolves currently opened project details, all squad members, existing projects, phases, tasks,
- * and current server timestamp for relative date reasoning.
+ * Resolves currently opened project details, phases, tasks, squad members,
+ * conversation history, and current server timestamp for relative date reasoning.
  */
 export async function getAiExecutionContext(options: GetContextOptions): Promise<AiExecutionContext> {
-  const { workspaceId, userId, userRole: providedRole, currentProjectId, currentTaskId, activePath } = options;
+  const {
+    workspaceId,
+    userId,
+    userRole: providedRole,
+    currentProjectId,
+    currentPhaseId,
+    currentTaskId,
+    currentMemberId,
+    currentView,
+    recentEntities: providedRecent,
+    conversationHistory,
+    activePath,
+  } = options;
 
   // 1. Fetch workspace, current user, members, projects, and active tasks concurrently
   const [workspace, currentUser, memberList, projects, tasks] = await Promise.all([
@@ -71,12 +89,39 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
     }))
   );
 
-  // Resolve active project name if currentProjectId is set or inferred
+  // Resolve active project name if currentProjectId is set
   let currentProjectName: string | undefined = undefined;
   if (currentProjectId) {
     const matched = projects.find((p) => p.id === currentProjectId);
     if (matched) {
       currentProjectName = matched.name;
+    }
+  }
+
+  // Resolve active phase name if currentPhaseId is set
+  let currentPhaseName: string | undefined = undefined;
+  if (currentPhaseId) {
+    const matched = phases.find((ph) => ph.id === currentPhaseId);
+    if (matched) {
+      currentPhaseName = matched.name;
+    }
+  }
+
+  // Resolve active task title if currentTaskId is set
+  let currentTaskTitle: string | undefined = undefined;
+  if (currentTaskId) {
+    const matched = tasks.find((t) => t.id === currentTaskId);
+    if (matched) {
+      currentTaskTitle = matched.title;
+    }
+  }
+
+  // Resolve active member name if currentMemberId is set
+  let currentMemberName: string | undefined = undefined;
+  if (currentMemberId) {
+    const matched = memberList.find((m) => m.user.id === currentMemberId || m.id === currentMemberId);
+    if (matched) {
+      currentMemberName = matched.user.name;
     }
   }
 
@@ -86,7 +131,7 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
   const memberRecord = memberList.find((m) => m.user.id === userId);
   const resolvedRole = providedRole || memberRecord?.role || currentUser?.role || "MEMBER";
 
-  return {
+  const rawContext: AiExecutionContext = {
     workspaceId,
     workspaceName: workspace?.name || "Workspace",
     userId,
@@ -94,7 +139,15 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
     userRole: resolvedRole,
     currentProjectId,
     currentProjectName,
+    currentPhaseId,
+    currentPhaseName,
     currentTaskId,
+    currentTaskTitle,
+    currentMemberId,
+    currentMemberName,
+    currentView,
+    recentEntities: providedRecent,
+    conversationHistory,
     activePath,
     serverTime,
     members: memberList.map((m) => ({
@@ -124,4 +177,11 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
       dueDate: t.dueDate ? t.dueDate.toISOString() : null,
     })),
   };
+
+  // Extract recent entities from conversation history if not explicitly provided
+  if (!rawContext.recentEntities && conversationHistory && conversationHistory.length > 0) {
+    rawContext.recentEntities = extractRecentEntitiesFromHistory(conversationHistory, rawContext);
+  }
+
+  return validateAndSanitizeContext(rawContext);
 }

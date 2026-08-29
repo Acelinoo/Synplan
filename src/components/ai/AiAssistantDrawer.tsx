@@ -270,11 +270,33 @@ export function AiAssistantDrawer() {
     setIsPlanning(true);
 
     try {
-      // 3. Call Plan Generation API (with pending clarification context if exists)
+      const selectedTaskId = useTaskStore.getState().selectedTaskId;
+      const currentView = pathname.includes("/calendar")
+        ? "calendar"
+        : pathname.includes("/tasks")
+        ? "tasks"
+        : pathname.includes("/projects")
+        ? "projects"
+        : pathname.includes("/team")
+        ? "team"
+        : pathname.includes("/analytics") || pathname.includes("/reports")
+        ? "analytics"
+        : "dashboard";
+
+      // 3. Call Plan Generation API (with full UI context, conversational history, and pending clarification)
       const res = await apiClient.generateAiPlan({
         prompt: promptForEngine,
         currentProjectId,
+        currentTaskId: selectedTaskId || undefined,
+        currentView,
         activePath: pathname,
+        conversationHistory: messages
+          .slice(-8)
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          })),
         pendingClarification: pendingClarificationRef.current || undefined,
       });
 

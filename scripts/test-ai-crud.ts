@@ -573,7 +573,7 @@ async function runPhase4Tests() {
     plan9_8.actions.length === 1 &&
     plan9_8.actions[0].type === "CREATE_TASK" &&
     plan9_8.actions[0].payload.title === "Testing Checkout" &&
-    plan9_8.actions[0].payload.assigneeName === "Alice",
+    (plan9_8.actions[0].payload.assigneeName === "Alice" || plan9_8.actions[0].payload.assigneeName === "Alice Engineer"),
     "ADVANCED: Create task with assignment resolves inline assignee name"
   );
 

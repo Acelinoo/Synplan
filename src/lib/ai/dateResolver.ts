@@ -79,6 +79,18 @@ export function resolveNaturalDate(
     };
   }
 
+  // 2.1 Yesterday / kemarin
+  if (clean === "yesterday" || clean === "kemarin") {
+    const d = new Date(baseDate);
+    d.setDate(d.getDate() - 1);
+    return {
+      isoDate: formatIsoDate(d),
+      formattedDisplay: d.toLocaleDateString("id-ID", { dateStyle: "long" }),
+      source: input,
+      confidence: 1.0,
+    };
+  }
+
   // 3. Tomorrow / besok
   if (clean === "tomorrow" || clean === "besok") {
     const d = new Date(baseDate);
@@ -100,6 +112,34 @@ export function resolveNaturalDate(
       formattedDisplay: d.toLocaleDateString("id-ID", { dateStyle: "long" }),
       source: input,
       confidence: 1.0,
+    };
+  }
+
+  // 4.1 This weekend / akhir minggu ini / weekend ini
+  if (clean.includes("this weekend") || clean.includes("akhir minggu ini") || clean.includes("weekend ini")) {
+    const d = new Date(baseDate);
+    const dayOfWeek = d.getDay(); // 0 is Sunday, 6 is Saturday
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    d.setDate(d.getDate() + daysUntilSunday);
+    return {
+      isoDate: formatIsoDate(d),
+      formattedDisplay: d.toLocaleDateString("id-ID", { dateStyle: "long" }),
+      source: input,
+      confidence: 0.95,
+    };
+  }
+
+  // 4.2 This week / minggu ini
+  if (clean === "this week" || clean === "minggu ini") {
+    const d = new Date(baseDate);
+    const dayOfWeek = d.getDay();
+    const daysUntilFriday = dayOfWeek <= 5 ? 5 - dayOfWeek : 0;
+    d.setDate(d.getDate() + daysUntilFriday);
+    return {
+      isoDate: formatIsoDate(d),
+      formattedDisplay: d.toLocaleDateString("id-ID", { dateStyle: "long" }),
+      source: input,
+      confidence: 0.95,
     };
   }
 
