@@ -4,6 +4,7 @@ import { Workspace, Project, WorkspaceMember } from "@/types";
 interface WorkspaceState {
   activeWorkspace: Workspace | null;
   workspaces: Workspace[];
+  isWorkspaceValidated: boolean;
   activeProject: Project | null;
   projects: Project[];
   members: WorkspaceMember[];
@@ -12,6 +13,7 @@ interface WorkspaceState {
 
   // Actions
   setActiveWorkspace: (workspace: Workspace) => void;
+  setWorkspaceValidated: (validated: boolean) => void;
   setWorkspaces: (workspaces: Workspace[]) => void;
   setActiveProject: (project: Project | null) => void;
   setProjects: (projects: Project[]) => void;
@@ -42,6 +44,7 @@ const getInitialWorkspace = (): Workspace | null => {
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeWorkspace: getInitialWorkspace(),
+  isWorkspaceValidated: false,
   workspaces: [],
   activeProject: null,
   projects: [],
@@ -63,6 +66,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }
     set({ activeWorkspace: workspace, activeProject: null });
   },
+  setWorkspaceValidated: (validated) => set({ isWorkspaceValidated: validated }),
   setWorkspaces: (workspaces) => set({ workspaces }),
   setActiveProject: (project) => set({ activeProject: project }),
   setProjects: (projects) => set({ projects }),

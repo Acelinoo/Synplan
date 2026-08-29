@@ -17,16 +17,26 @@ const TaskDetailDrawer = dynamic(
 export function UpcomingDeadlinesWidget() {
   const router = useRouter();
   const { tasks, setTasks, addTask, updateTask, moveTaskStatus, deleteTask } = useTaskStore();
-  const { projects, activeWorkspace } = useWorkspaceStore();
+  const { projects, activeWorkspace, isWorkspaceValidated } = useWorkspaceStore();
   const { onEvent } = useRealtime();
   const [isLoading, setIsLoading] = React.useState(tasks.length === 0);
   const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
 
+  const [error, setError] = React.useState<string | null>(null);
+
   React.useEffect(() => {
-    async function loadTasks() {
+    if (!activeWorkspace?.id || !isWorkspaceValidated) {
       setIsLoading(true);
+      return;
+    }
+
+    let isMounted = true;
+    async function loadTasks(wsId: string) {
+      setIsLoading(true);
+      setError(null);
       try {
-        const res = await apiClient.getTasks({ workspaceId: activeWorkspace?.id });
+        const res = await apiClient.getTasks({ workspaceId: wsId });
+        if (!isMounted) return;
         if (res.success && Array.isArray(res.data)) {
           const mapped = res.data.map((t: any) => ({
             id: t.id,
@@ -45,15 +55,25 @@ export function UpcomingDeadlinesWidget() {
             updatedAt: t.updatedAt,
           }));
           setTasks(mapped);
+        } else if (!res.success) {
+          setError(res.error || "Failed to load tasks");
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (!isMounted) return;
         console.warn("UpcomingDeadlines getTasks fallback:", err);
+        setError(err?.message || "Failed to load tasks");
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
-    loadTasks();
-  }, [activeWorkspace?.id, setTasks]);
+    loadTasks(activeWorkspace.id);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeWorkspace?.id, isWorkspaceValidated, setTasks]);
 
   // --- Realtime Tasks Live Synchronization ---
   React.useEffect(() => {
@@ -199,6 +219,10 @@ export function UpcomingDeadlinesWidget() {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : error ? (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center text-xs text-destructive">
+              {error}
             </div>
           ) : displayTasks.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border/80 p-8 text-center text-xs text-muted-foreground">

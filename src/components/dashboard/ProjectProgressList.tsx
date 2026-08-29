@@ -9,26 +9,46 @@ import { useRealtime } from "@/components/realtime/RealtimeProvider";
 
 export function ProjectProgressList() {
   const router = useRouter();
-  const { projects, setProjects, addProject, updateProject, deleteProject, activeWorkspace, members } = useWorkspaceStore();
+  const { projects, setProjects, addProject, updateProject, deleteProject, activeWorkspace, members, isWorkspaceValidated } = useWorkspaceStore();
   const { onEvent } = useRealtime();
   const [isLoading, setIsLoading] = React.useState(projects.length === 0);
 
+  const [error, setError] = React.useState<string | null>(null);
+
   React.useEffect(() => {
-    async function loadProjects() {
+    if (!activeWorkspace?.id || !isWorkspaceValidated) {
       setIsLoading(true);
+      return;
+    }
+
+    let isMounted = true;
+    async function loadProjects(wsId: string) {
+      setIsLoading(true);
+      setError(null);
       try {
-        const res = await apiClient.getProjects({ workspaceId: activeWorkspace?.id });
+        const res = await apiClient.getProjects({ workspaceId: wsId });
+        if (!isMounted) return;
         if (res.success && Array.isArray(res.data)) {
           setProjects(res.data);
+        } else if (!res.success) {
+          setError(res.error || "Failed to load projects");
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (!isMounted) return;
         console.warn("ProjectProgressList getProjects fallback:", err);
+        setError(err?.message || "Failed to load projects");
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
-    loadProjects();
-  }, [activeWorkspace?.id, setProjects]);
+    loadProjects(activeWorkspace.id);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeWorkspace?.id, isWorkspaceValidated, setProjects]);
 
   // --- Realtime Recent Projects Synchronization ---
   React.useEffect(() => {
@@ -133,6 +153,10 @@ export function ProjectProgressList() {
                 <Skeleton className="h-6 w-12 rounded-full" />
               </div>
             ))}
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center text-xs text-destructive">
+            {error}
           </div>
         ) : activeProjects.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/80 p-8 text-center text-xs text-muted-foreground">

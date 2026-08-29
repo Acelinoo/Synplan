@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 
 export function KpiSummaryGrid() {
-  const { activeWorkspace, projects, members } = useWorkspaceStore();
+  const { activeWorkspace, projects, members, isWorkspaceValidated } = useWorkspaceStore();
   const { onEvent } = useRealtime();
   const [isLoading, setIsLoading] = React.useState(true);
 
@@ -24,10 +24,17 @@ export function KpiSummaryGrid() {
   });
 
   React.useEffect(() => {
-    async function loadSummary() {
+    if (!activeWorkspace?.id || !isWorkspaceValidated) {
+      setIsLoading(true);
+      return;
+    }
+
+    let isMounted = true;
+    async function loadSummary(wsId: string) {
       setIsLoading(true);
       try {
-        const res = await apiClient.getDashboardSummary(activeWorkspace?.id);
+        const res = await apiClient.getDashboardSummary(wsId);
+        if (!isMounted) return;
         if (res.success && res.data) {
           setSummary({
             totalProjects: res.data.totalProjects ?? 0,
@@ -40,13 +47,20 @@ export function KpiSummaryGrid() {
           });
         }
       } catch (e) {
+        if (!isMounted) return;
         console.warn("Dashboard summary API fallback:", e);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
-    loadSummary();
-  }, [activeWorkspace?.id, projects.length, members.length]);
+    loadSummary(activeWorkspace.id);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeWorkspace?.id, isWorkspaceValidated, projects.length, members.length]);
 
   // --- Realtime KPI Live Synchronization ---
   React.useEffect(() => {

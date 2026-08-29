@@ -23,7 +23,7 @@ interface ActivityItem {
 
 export function RecentActivityFeed() {
   const router = useRouter();
-  const { activeWorkspace } = useWorkspaceStore();
+  const { activeWorkspace, isWorkspaceValidated } = useWorkspaceStore();
   const { onEvent } = useRealtime();
   const [activities, setActivities] = React.useState<ActivityItem[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -70,11 +70,21 @@ export function RecentActivityFeed() {
     };
   }, [onEvent]);
 
+  const [error, setError] = React.useState<string | null>(null);
+
   React.useEffect(() => {
-    async function loadActivities() {
+    if (!activeWorkspace?.id || !isWorkspaceValidated) {
       setIsLoading(true);
+      return;
+    }
+
+    let isMounted = true;
+    async function loadActivities(wsId: string) {
+      setIsLoading(true);
+      setError(null);
       try {
-        const res = await apiClient.getDashboardSummary(activeWorkspace?.id);
+        const res = await apiClient.getDashboardSummary(wsId);
+        if (!isMounted) return;
         if (res.success && Array.isArray(res.data?.recentActivities)) {
           const liveActs = res.data.recentActivities.map((act: any) => {
             let targetLink = "/tasks";
@@ -101,18 +111,29 @@ export function RecentActivityFeed() {
             };
           });
           setActivities(liveActs);
+        } else if (!res.success) {
+          setError(res.error || "Failed to load activities");
+          setActivities([]);
         } else {
           setActivities([]);
         }
-      } catch (e) {
+      } catch (e: any) {
+        if (!isMounted) return;
         console.warn("Activity feed API load error:", e);
+        setError(e?.message || "Failed to load activities");
         setActivities([]);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     }
-    loadActivities();
-  }, [activeWorkspace?.id]);
+    loadActivities(activeWorkspace.id);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeWorkspace?.id, isWorkspaceValidated]);
 
   const handleActivityClick = (act: ActivityItem) => {
     if (act.link) {
@@ -145,6 +166,10 @@ export function RecentActivityFeed() {
                 <Skeleton className="h-3 w-16 rounded" />
               </div>
             ))}
+          </div>
+        ) : error ? (
+          <div className="py-6 text-center text-xs text-destructive">
+            {error}
           </div>
         ) : activities.length === 0 ? (
           <div className="py-8 text-center text-xs text-muted-foreground">

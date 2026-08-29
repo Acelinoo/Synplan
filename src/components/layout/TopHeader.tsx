@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useUiStore, useWorkspaceStore, useNotificationStore } from "@/store";
-import { useRealtimeWorkspace } from "@/hooks/useRealtimeWorkspace";
+import { useRealtime } from "@/components/realtime/RealtimeProvider";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/apiClient";
 import { NotificationItem, NotificationType } from "@/types";
@@ -45,7 +45,7 @@ const routeNames: Record<string, string> = {
 export function TopHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { activeWorkspace, setActiveWorkspace, setWorkspaces, workspaces } = useWorkspaceStore();
+  const { activeWorkspace, setActiveWorkspace, setWorkspaces, setWorkspaceValidated, workspaces } = useWorkspaceStore();
   const { theme, setTheme, toggleSidebar, addToast } = useUiStore();
   const {
     notifications,
@@ -56,7 +56,7 @@ export function TopHeader() {
     markAllAsRead,
   } = useNotificationStore();
 
-  const { onEvent } = useRealtimeWorkspace();
+  const { onEvent } = useRealtime();
 
   const [isThemeMenuOpen, setIsThemeMenuOpen] = React.useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = React.useState(false);
@@ -91,10 +91,14 @@ export function TopHeader() {
         }
       } catch (err) {
         console.warn("Failed to load user session in TopHeader:", err);
+      } finally {
+        // Mark workspace as validated so dashboard widgets can start fetching.
+        // This must fire on both success and failure so widgets don't stay in loading forever.
+        setWorkspaceValidated(true);
       }
     }
     loadUserSession();
-  }, [setActiveWorkspace, setWorkspaces]);
+  }, [setActiveWorkspace, setWorkspaces, setWorkspaceValidated]);
 
   React.useEffect(() => {
     try {

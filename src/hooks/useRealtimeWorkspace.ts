@@ -63,14 +63,12 @@ export function useRealtimeWorkspace() {
       }
     }
 
-    if (!activeWorkspace) {
-      syncWorkspace();
-    }
+    syncWorkspace();
 
     return () => {
       isMounted = false;
     };
-  }, [activeWorkspace, setActiveWorkspace, setWorkspaces]);
+  }, [setActiveWorkspace, setWorkspaces]);
 
   // 2. Track global connection state
   React.useEffect(() => {
