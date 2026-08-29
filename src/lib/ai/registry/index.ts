@@ -204,8 +204,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       } else {
         const res = resolveWorkspaceMember(rawName, context.members);
         if (res.notFound) {
-          needsClarification = true;
-          clarifications.push(`Saya tidak menemukan anggota bernama "${rawName}" di workspace ini.`);
+          warnings.push(`Anggota "${rawName}" tidak ditemukan di workspace squad (akan dilewati).`);
         } else if (res.isAmbiguous) {
           needsClarification = true;
           clarifications.push(`Ditemukan beberapa anggota cocok dengan "${rawName}": ${res.candidates.join(", ")}. Anggota mana yang Anda maksud?`);
@@ -237,7 +236,11 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       }
 
       if (!targetUserId) {
-        throw new Error(`Anggota "${targetUserName}" tidak ditemukan di workspace.`);
+        return {
+          success: true,
+          data: { projectId: targetProjectId, userName: targetUserName },
+          summary: `Anggota "${targetUserName}" tidak terdaftar di workspace squad (dilewati).`,
+        };
       }
 
       const existing = await prisma.projectMember.findFirst({

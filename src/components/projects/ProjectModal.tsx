@@ -47,7 +47,7 @@ interface ProjectModalProps {
 
 export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
   const { isCreateProjectModalOpen, setCreateProjectModalOpen, addToast } = useUiStore();
-  const { addProject, updateProject, activeWorkspace, members, setMembers } = useWorkspaceStore();
+  const { addProject, setProjects, updateProject, activeWorkspace, members, setMembers } = useWorkspaceStore();
 
   const isOpen = editingProject ? true : isCreateProjectModalOpen;
 
@@ -305,16 +305,28 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
       });
 
       if (res.success) {
+        apiClient.invalidate("/api/projects");
+        apiClient.invalidate("/api/dashboard/summary");
+
+        try {
+          const fresh = await apiClient.getProjects({ workspaceId: activeWorkspace?.id });
+          if (fresh.success && Array.isArray(fresh.data)) {
+            setProjects(fresh.data);
+          }
+        } catch (e) {
+          // ignore
+        }
+
         addToast({
           title: "Project Created Successfully ✨",
-          description: res.data?.summary || "Project, phases, and tasks created.",
+          description: res.data?.summary || res.message || "Project, phases, and tasks created.",
           variant: "success",
         });
         handleClose();
       } else {
         addToast({
           title: "Execution Error",
-          description: res.error || "Failed to execute project plan",
+          description: res.error || res.message || "Failed to execute project plan",
           variant: "danger",
         });
       }
@@ -684,7 +696,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                     <div className="flex items-center gap-2">
                       <MagnetButton
                         type="button"
-                        disabled={isExecutingPlan || aiPlan.needsClarification}
+                        disabled={isExecutingPlan}
                         onClick={handleExecuteAiPlan}
                         className="gap-2 bg-primary text-primary-foreground font-semibold px-4"
                       >
