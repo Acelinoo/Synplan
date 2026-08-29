@@ -8,7 +8,7 @@ import { Role } from "@prisma/client";
 
 export async function POST(req: NextRequest) {
   try {
-    const { auth, errorResponse } = await requireAuthGuard(req, Role.MEMBER);
+    const { auth, errorResponse } = await requireAuthGuard(req, "workspace.view");
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     const context = await getAiExecutionContext({
       workspaceId: auth.workspaceId,
       userId: auth.userId,
+      userRole: auth.role,
     });
 
     // 3. Re-validate actions on the server before mutation

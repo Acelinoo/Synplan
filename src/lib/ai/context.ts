@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
+import { Role } from "@prisma/client";
 import { AiExecutionContext } from "./types";
 
 interface GetContextOptions {
   workspaceId: string;
   userId: string;
+  userRole?: Role | string;
   currentProjectId?: string;
   currentTaskId?: string;
   activePath?: string;
@@ -15,7 +17,7 @@ interface GetContextOptions {
  * and current server timestamp for relative date reasoning.
  */
 export async function getAiExecutionContext(options: GetContextOptions): Promise<AiExecutionContext> {
-  const { workspaceId, userId, currentProjectId, currentTaskId, activePath } = options;
+  const { workspaceId, userId, userRole: providedRole, currentProjectId, currentTaskId, activePath } = options;
 
   // 1. Fetch workspace, current user, members, projects, and active tasks concurrently
   const [workspace, currentUser, memberList, projects, tasks] = await Promise.all([
@@ -79,12 +81,15 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
   const now = new Date();
   const serverTime = `${now.toISOString()} (${now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })})`;
 
+  const memberRecord = memberList.find((m) => m.user.id === userId);
+  const resolvedRole = providedRole || memberRecord?.role || currentUser?.role || "MEMBER";
+
   return {
     workspaceId,
     workspaceName: workspace?.name || "Workspace",
     userId,
     userName: currentUser?.name || "User",
-    userRole: currentUser?.role || "MEMBER",
+    userRole: resolvedRole,
     currentProjectId,
     currentProjectName,
     currentTaskId,

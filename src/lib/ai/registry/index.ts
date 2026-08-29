@@ -175,12 +175,16 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     },
     verify: async (payload, context, result) => {
       if (!result?.projectId) return false;
-      const found = await prisma.project.findUnique({ where: { id: result.projectId } });
+      const found = await prisma.project.findFirst({
+        where: { id: result.projectId, workspaceId: context.workspaceId },
+      });
       return !!found;
     },
     rollback: async (payload, context, result) => {
       if (result?.projectId) {
-        await prisma.project.delete({ where: { id: result.projectId } }).catch(() => {});
+        await prisma.project.deleteMany({
+          where: { id: result.projectId, workspaceId: context.workspaceId },
+        }).catch(() => {});
       }
     },
   },
@@ -225,6 +229,14 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         throw new Error("Target project ID tidak ditemukan.");
       }
 
+      // Tenant isolation: verify project belongs to active workspace
+      const project = await prisma.project.findFirst({
+        where: { id: targetProjectId, workspaceId },
+      });
+      if (!project) {
+        throw new Error("Project tidak ditemukan di workspace ini.");
+      }
+
       let targetUserId = payload.userId;
       let targetUserName = payload.userName || payload.memberName;
       if (!targetUserId && targetUserName) {
@@ -262,7 +274,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
             userId: targetUserId,
             type: "PROJECT_MEMBER_ADDED",
             title: "Added to Project",
-            description: `You were added to project "${payload.projectName || "project"}".`,
+            description: `You were added to project "${project.name}".`,
             entityType: "PROJECT",
             entityId: targetProjectId,
             link: `/projects/${targetProjectId}`,
@@ -277,13 +289,17 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       return {
         success: true,
         data: { projectId: targetProjectId, userId: targetUserId, userName: targetUserName },
-        summary: `Berhasil menambahkan ${targetUserName} ke dalam project.`,
+        summary: `Berhasil menambahkan ${targetUserName} ke dalam project "${project.name}".`,
       };
     },
     verify: async (payload, context, result) => {
       if (!result?.projectId || !result?.userId) return false;
       const found = await prisma.projectMember.findFirst({
-        where: { projectId: result.projectId, userId: result.userId },
+        where: {
+          projectId: result.projectId,
+          userId: result.userId,
+          project: { workspaceId: context.workspaceId },
+        },
       });
       return !!found;
     },
@@ -326,6 +342,14 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
 
       if (!targetProjectId) {
         throw new Error("Project ID tujuan tidak ditemukan untuk membuat task.");
+      }
+
+      // Tenant boundary verification
+      const project = await prisma.project.findFirst({
+        where: { id: targetProjectId, workspaceId },
+      });
+      if (!project) {
+        throw new Error("Project tidak ditemukan di workspace ini.");
       }
 
       let assigneeId: string | null = payload.assigneeId || null;
@@ -393,7 +417,9 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     },
     verify: async (payload, context, result) => {
       if (!result?.taskId) return false;
-      const found = await prisma.task.findUnique({ where: { id: result.taskId } });
+      const found = await prisma.task.findFirst({
+        where: { id: result.taskId, workspaceId: context.workspaceId },
+      });
       return !!found;
     },
   },
@@ -432,6 +458,14 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
 
       if (!targetTaskId) {
         throw new Error(`Task "${payload.taskTitle || "target"}" tidak ditemukan.`);
+      }
+
+      // Tenant boundary verification
+      const existingTask = await prisma.task.findFirst({
+        where: { id: targetTaskId, workspaceId },
+      });
+      if (!existingTask) {
+        throw new Error(`Task tidak ditemukan di workspace ini.`);
       }
 
       let assigneeId = payload.assigneeId;
@@ -478,7 +512,9 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     },
     verify: async (payload, context, result) => {
       if (!result?.taskId || !result?.assigneeId) return false;
-      const task = await prisma.task.findUnique({ where: { id: result.taskId } });
+      const task = await prisma.task.findFirst({
+        where: { id: result.taskId, workspaceId: context.workspaceId },
+      });
       return task?.assigneeId === result.assigneeId;
     },
   },
@@ -505,6 +541,12 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
 
       if (!targetProjId) throw new Error("Project ID diperlukan untuk membuat fase.");
 
+      // Tenant boundary verification
+      const project = await prisma.project.findFirst({
+        where: { id: targetProjId, workspaceId },
+      });
+      if (!project) throw new Error("Project tidak ditemukan di workspace ini.");
+
       const phase = await prisma.phase.create({
         data: {
           projectId: targetProjId,
@@ -527,7 +569,12 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     },
     verify: async (payload, context, result) => {
       if (!result?.phaseId) return false;
-      const found = await prisma.phase.findUnique({ where: { id: result.phaseId } });
+      const found = await prisma.phase.findFirst({
+        where: {
+          id: result.phaseId,
+          project: { workspaceId: context.workspaceId },
+        },
+      });
       return !!found;
     },
   },
@@ -543,6 +590,12 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     execute: async (payload, context, sessionMap) => {
       const targetProjId = payload.projectId || sessionMap.get(payload.projectName?.toLowerCase() || "") || context.currentProjectId;
       if (!targetProjId) throw new Error("Project ID diperlukan untuk update.");
+
+      // Tenant boundary verification
+      const project = await prisma.project.findFirst({
+        where: { id: targetProjId, workspaceId: context.workspaceId },
+      });
+      if (!project) throw new Error("Project tidak ditemukan di workspace ini.");
 
       let deadlineDate: Date | undefined = undefined;
       if (payload.deadline) {
@@ -568,7 +621,9 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     },
     verify: async (payload, context, result) => {
       if (!result?.id) return false;
-      const found = await prisma.project.findUnique({ where: { id: result.id } });
+      const found = await prisma.project.findFirst({
+        where: { id: result.id, workspaceId: context.workspaceId },
+      });
       return !!found;
     },
   },
@@ -588,6 +643,12 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         if (resTask.task) targetTaskId = resTask.task.id;
       }
       if (!targetTaskId) throw new Error("Task ID diperlukan untuk update.");
+
+      // Tenant boundary verification
+      const existingTask = await prisma.task.findFirst({
+        where: { id: targetTaskId, workspaceId: context.workspaceId },
+      });
+      if (!existingTask) throw new Error("Task tidak ditemukan di workspace ini.");
 
       let dueDate: Date | undefined = undefined;
       if (payload.dueDate) {
@@ -613,7 +674,9 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     },
     verify: async (payload, context, result) => {
       if (!result?.id) return false;
-      const found = await prisma.task.findUnique({ where: { id: result.id } });
+      const found = await prisma.task.findFirst({
+        where: { id: result.id, workspaceId: context.workspaceId },
+      });
       return !!found;
     },
   },
@@ -643,16 +706,24 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       const targetId = res.project?.id || payload.id;
       if (!targetId) throw new Error("Project tidak ditemukan untuk dihapus.");
 
+      // Tenant boundary verification
+      const project = await prisma.project.findFirst({
+        where: { id: targetId, workspaceId: context.workspaceId },
+      });
+      if (!project) throw new Error("Project tidak ditemukan di workspace ini.");
+
       await prisma.project.delete({ where: { id: targetId } });
       return {
         success: true,
         data: { deletedId: targetId },
-        summary: `Project "${payload.name || targetId}" berhasil dihapus secara permanen.`,
+        summary: `Project "${project.name}" berhasil dihapus secara permanen.`,
       };
     },
     verify: async (payload, context, result) => {
       if (!result?.deletedId) return false;
-      const found = await prisma.project.findUnique({ where: { id: result.deletedId } });
+      const found = await prisma.project.findFirst({
+        where: { id: result.deletedId, workspaceId: context.workspaceId },
+      });
       return found === null; // Verified deleted
     },
   },
@@ -668,16 +739,25 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     execute: async (payload, context) => {
       const targetId = payload.id;
       if (!targetId) throw new Error("Task ID diperlukan untuk dihapus.");
+
+      // Tenant boundary verification
+      const task = await prisma.task.findFirst({
+        where: { id: targetId, workspaceId: context.workspaceId },
+      });
+      if (!task) throw new Error("Task tidak ditemukan di workspace ini.");
+
       await prisma.task.delete({ where: { id: targetId } });
       return {
         success: true,
         data: { deletedId: targetId },
-        summary: `Task "${payload.name || targetId}" berhasil dihapus.`,
+        summary: `Task "${task.title}" berhasil dihapus.`,
       };
     },
     verify: async (payload, context, result) => {
       if (!result?.deletedId) return false;
-      const found = await prisma.task.findUnique({ where: { id: result.deletedId } });
+      const found = await prisma.task.findFirst({
+        where: { id: result.deletedId, workspaceId: context.workspaceId },
+      });
       return found === null;
     },
   },
@@ -690,7 +770,16 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     requiredParams: ["phaseId"],
     optionalParams: ["name", "order"],
     validate: (payload) => ({ isValid: !!payload.phaseId, errors: payload.phaseId ? [] : ["Phase ID required"], warnings: [], needsClarification: false, clarifications: [] }),
-    execute: async (payload) => {
+    execute: async (payload, context) => {
+      // Tenant boundary verification
+      const phase = await prisma.phase.findFirst({
+        where: { id: payload.phaseId },
+        include: { project: { select: { workspaceId: true } } },
+      });
+      if (!phase || phase.project.workspaceId !== context.workspaceId) {
+        throw new Error("Fase tidak ditemukan di workspace ini.");
+      }
+
       const updated = await prisma.phase.update({
         where: { id: payload.phaseId },
         data: { name: payload.name || undefined, order: payload.order !== undefined ? payload.order : undefined },
@@ -699,7 +788,12 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     },
     verify: async (payload, context, result) => {
       if (!result?.id) return false;
-      const found = await prisma.phase.findUnique({ where: { id: result.id } });
+      const found = await prisma.phase.findFirst({
+        where: {
+          id: result.id,
+          project: { workspaceId: context.workspaceId },
+        },
+      });
       return !!found;
     },
   },
@@ -712,13 +806,27 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     requiredParams: ["id"],
     optionalParams: ["name"],
     validate: () => ({ isValid: true, errors: [], warnings: [], needsClarification: false, clarifications: [] }),
-    execute: async (payload) => {
+    execute: async (payload, context) => {
+      // Tenant boundary verification
+      const phase = await prisma.phase.findFirst({
+        where: { id: payload.id },
+        include: { project: { select: { workspaceId: true } } },
+      });
+      if (!phase || phase.project.workspaceId !== context.workspaceId) {
+        throw new Error("Fase tidak ditemukan di workspace ini.");
+      }
+
       await prisma.phase.delete({ where: { id: payload.id } });
       return { success: true, data: { deletedId: payload.id }, summary: `Fase berhasil dihapus.` };
     },
     verify: async (payload, context, result) => {
       if (!result?.deletedId) return false;
-      const found = await prisma.phase.findUnique({ where: { id: result.deletedId } });
+      const found = await prisma.phase.findFirst({
+        where: {
+          id: result.deletedId,
+          project: { workspaceId: context.workspaceId },
+        },
+      });
       return found === null;
     },
   },
@@ -731,15 +839,25 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
     requiredParams: ["projectId", "userId"],
     optionalParams: ["userName"],
     validate: () => ({ isValid: true, errors: [], warnings: [], needsClarification: false, clarifications: [] }),
-    execute: async (payload) => {
+    execute: async (payload, context) => {
+      // Tenant boundary verification
+      const project = await prisma.project.findFirst({
+        where: { id: payload.projectId, workspaceId: context.workspaceId },
+      });
+      if (!project) throw new Error("Project tidak ditemukan di workspace ini.");
+
       await prisma.projectMember.deleteMany({
         where: { projectId: payload.projectId, userId: payload.userId },
       });
       return { success: true, data: payload, summary: `Anggota berhasil dikeluarkan dari project.` };
     },
-    verify: async (payload) => {
+    verify: async (payload, context) => {
       const found = await prisma.projectMember.findFirst({
-        where: { projectId: payload.projectId, userId: payload.userId },
+        where: {
+          projectId: payload.projectId,
+          userId: payload.userId,
+          project: { workspaceId: context.workspaceId },
+        },
       });
       return found === null;
     },
