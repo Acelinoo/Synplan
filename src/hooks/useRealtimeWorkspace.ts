@@ -40,8 +40,21 @@ export function useRealtimeWorkspace() {
             } else {
               setActiveWorkspace(userWorkspaces[0]);
             }
-            return;
           }
+
+          // Fetch Realtime Authorization Token
+          try {
+            const tokenRes = await fetch("/api/auth/realtime-token");
+            if (tokenRes.ok) {
+              const tokenData = await tokenRes.json();
+              if (tokenData.success && tokenData.data?.token) {
+                realtimeClient.setAuthToken(tokenData.data.token);
+              }
+            }
+          } catch (e) {
+            // Non-fatal
+          }
+          return;
         }
 
         // Fallback: User-scoped workspaces endpoint
@@ -102,7 +115,7 @@ export function useRealtimeWorkspace() {
   const onEvent = React.useCallback(
     <T extends RealtimeEventType>(eventType: T, handler: RealtimeEventHandler<T>) => {
       const wrappedHandler: RealtimeEventHandler<T> = (ev) => {
-        // Only accept if event matches current workspace OR if workspace is unspecified
+        // Strict Tenant Isolation Guard: Only accept if event matches current active workspace
         if (!ev.workspaceId || !workspaceId || ev.workspaceId === workspaceId) {
           handler(ev);
         }

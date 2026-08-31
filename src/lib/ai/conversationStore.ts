@@ -22,8 +22,32 @@ import {
 export const MAX_CONVERSATION_TURNS = 20;
 export const MAX_RECENT_ENTITIES_PER_TYPE = 10;
 export const CONVERSATION_CONTEXT_TTL_MS = 15 * 60 * 1000; // 15 minutes
+export const MAX_STORED_CONVERSATIONS = 300;
 
 const conversationStore = new Map<string, AiConversationState>();
+
+/**
+ * Prunes expired or excess conversation entries to prevent unbounded memory growth.
+ */
+export function pruneConversationStore(): void {
+  const now = Date.now();
+  for (const [key, state] of conversationStore.entries()) {
+    const updatedTime = new Date(state.updatedAt).getTime();
+    if (now - updatedTime > CONVERSATION_CONTEXT_TTL_MS) {
+      conversationStore.delete(key);
+    }
+  }
+
+  if (conversationStore.size > MAX_STORED_CONVERSATIONS) {
+    const sorted = Array.from(conversationStore.entries()).sort((a, b) => {
+      return new Date(a[1].updatedAt).getTime() - new Date(b[1].updatedAt).getTime();
+    });
+    const excess = conversationStore.size - MAX_STORED_CONVERSATIONS;
+    for (let i = 0; i < excess; i++) {
+      conversationStore.delete(sorted[i][0]);
+    }
+  }
+}
 
 /**
  * Builds the canonical isolation key for a conversation
@@ -94,6 +118,7 @@ export function getOrCreateConversationState(
   userId: string,
   conversationId?: string
 ): AiConversationState {
+  pruneConversationStore();
   const effectiveConvId = conversationId && conversationId.trim() ? conversationId.trim() : `conv_${userId}_default`;
   const existing = getConversationState(workspaceId, userId, effectiveConvId);
   if (existing) return existing;

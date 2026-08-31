@@ -7,6 +7,7 @@ import {
   canRemoveMember,
 } from "../src/lib/permissions";
 import { requireAuthGuard } from "../src/lib/authGuard";
+import { createSession } from "../src/lib/auth/session";
 import { prisma } from "../src/lib/prisma";
 import { NextRequest } from "next/server";
 
@@ -165,11 +166,13 @@ async function runTestSuite() {
     },
   });
 
+  const { sessionToken: sessionTokenA } = await createSession(userA.id);
+
   try {
     // Test 3.1: User A accessing Workspace A with authorized permission
     const reqA_A = new NextRequest("http://localhost:3000/api/projects", {
       headers: {
-        "x-synplan-user-id": userA.id,
+        cookie: `synplan_session_token=${sessionTokenA}`,
         "x-synplan-workspace-id": wsA.id,
       },
     });
@@ -179,7 +182,7 @@ async function runTestSuite() {
     // Test 3.2: User A attempting to access Workspace B (CROSS-WORKSPACE ATTACK)
     const reqA_B = new NextRequest("http://localhost:3000/api/projects", {
       headers: {
-        "x-synplan-user-id": userA.id,
+        cookie: `synplan_session_token=${sessionTokenA}`,
         "x-synplan-workspace-id": wsB.id,
       },
     });
@@ -189,7 +192,7 @@ async function runTestSuite() {
     // Test 3.3: User A attempting mutation requiring ADMIN in Workspace A (MEMBER level)
     const reqA_Admin = new NextRequest("http://localhost:3000/api/workspaces/settings", {
       headers: {
-        "x-synplan-user-id": userA.id,
+        cookie: `synplan_session_token=${sessionTokenA}`,
         "x-synplan-workspace-id": wsA.id,
       },
     });
@@ -203,6 +206,7 @@ async function runTestSuite() {
 
   } finally {
     // Cleanup test data cleanly
+    await prisma.session.deleteMany({ where: { userId: { in: [userA.id, userB.id] } } });
     await prisma.workspaceMember.deleteMany({ where: { workspaceId: { in: [wsA.id, wsB.id] } } });
     await prisma.workspace.deleteMany({ where: { id: { in: [wsA.id, wsB.id] } } });
     await prisma.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });

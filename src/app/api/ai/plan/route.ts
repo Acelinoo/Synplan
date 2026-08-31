@@ -3,16 +3,24 @@ import { requireAuthGuard } from "@/lib/authGuard";
 import { getAiExecutionContext } from "@/lib/ai/context";
 import { generateAiPlan } from "@/lib/ai/planner";
 import { registerPendingConfirmation, clearUserPendingConfirmations } from "@/lib/ai/confirmationStore";
-import { Role } from "@prisma/client";
+import { applyRateLimit, aiRateLimiter } from "@/lib/rateLimit";
+import { validateRequestBody } from "@/lib/validation/apiValidator";
+import { AiPlanRequestSchema } from "@/lib/validation/schemas";
+import { createApiErrorResponse } from "@/lib/apiErrors";
 
 export async function POST(req: NextRequest) {
   try {
+    const rateLimit = applyRateLimit(req, aiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { auth, errorResponse } = await requireAuthGuard(req, "workspace.view");
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const validation = await validateRequestBody(req, AiPlanRequestSchema);
+    if (validation.errorResponse) return validation.errorResponse;
+
     const {
       prompt,
       mode,
@@ -22,18 +30,10 @@ export async function POST(req: NextRequest) {
       currentTaskId,
       currentMemberId,
       currentView,
-      recentEntities,
       activePath,
       conversationHistory,
       pendingClarification,
-    } = body;
-
-    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
-      return NextResponse.json(
-        { success: false, error: "Prompt is required" },
-        { status: 400 }
-      );
-    }
+    } = validation.data;
 
     const cleanPrompt = prompt.trim().toLowerCase();
     const isCancelPrompt =
@@ -62,7 +62,6 @@ export async function POST(req: NextRequest) {
       currentTaskId,
       currentMemberId,
       currentView,
-      recentEntities,
       conversationHistory,
       activePath,
     });
@@ -79,19 +78,14 @@ export async function POST(req: NextRequest) {
       plan.confirmationStatus = "NEEDS_CONFIRMATION";
     }
 
-    return NextResponse.json({
-      success: true,
-      data: plan,
-    });
-  } catch (error: any) {
-    console.error("POST /api/ai/plan error:", error);
     return NextResponse.json(
       {
-        success: false,
-        error: "Failed to generate AI plan",
-        message: error?.message || "Internal server error",
+        success: true,
+        data: plan,
       },
-      { status: 500 }
+      { headers: rateLimit.rateLimitHeaders }
     );
+  } catch (error: any) {
+    return createApiErrorResponse(error, "Failed to generate AI plan");
   }
 }

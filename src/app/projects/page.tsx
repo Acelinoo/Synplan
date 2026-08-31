@@ -33,7 +33,7 @@ function ProjectsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const createParam = searchParams.get("create");
-  const { projects, setProjects, addProject, updateProject, deleteProject } = useWorkspaceStore();
+  const { projects, setProjects, addProject, updateProject, deleteProject, applyBatchMutation } = useWorkspaceStore();
   const { setCreateProjectModalOpen } = useUiStore();
   const { onEvent } = useRealtime();
 
@@ -69,12 +69,21 @@ function ProjectsContent() {
       }
     });
 
+    const unsubBatch = onEvent("BATCH_MUTATION", (event) => {
+      const raw = event.payload;
+      if (raw && raw.projectsUpdated) {
+        applyBatchMutation({ projectsUpdated: raw.projectsUpdated });
+        apiClient.invalidate("/api/projects");
+      }
+    });
+
     return () => {
       unsubCreate();
       unsubUpdate();
       unsubDelete();
+      unsubBatch();
     };
-  }, [onEvent, addProject, updateProject, deleteProject]);
+  }, [onEvent, addProject, updateProject, deleteProject, applyBatchMutation]);
 
   React.useEffect(() => {
     if (createParam === "true") {
@@ -307,7 +316,7 @@ function ProjectsContent() {
               <div className="flex items-center gap-3 min-w-0">
                 <span
                   className="h-3 w-3 shrink-0 rounded-md"
-                  style={{ backgroundColor: project.color || "#6366F1" }}
+                  style={{ backgroundColor: project.color || "#0284C7" }}
                 />
                 <div className="min-w-0">
                   <h4 className="truncate text-xs font-bold text-foreground group-hover:text-primary transition-colors">
@@ -330,7 +339,7 @@ function ProjectsContent() {
                       className="h-full rounded-full"
                       style={{
                         width: `${project.progress}%`,
-                        backgroundColor: project.color || "#6366F1",
+                        backgroundColor: project.color || "#0284C7",
                       }}
                     />
                   </div>

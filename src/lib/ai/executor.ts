@@ -14,6 +14,7 @@ import { verifyPlanExecution } from "./verifier";
 import { getIdempotencyResult, setIdempotencyResult } from "./idempotency";
 import { resolvePayloadTemporaryRefs } from "./dependencyGraph";
 import { recordExecutionReceipt } from "./receiptStore";
+import { createAuditEntry } from "@/lib/audit";
 
 /**
  * Centralized Server-Side AI Execution Layer (Phase 14D.2)
@@ -353,6 +354,28 @@ export async function executeAiPlan(
   };
 
   recordExecutionReceipt(executionReceipt);
+
+  // Record forensic audit log for AI execution
+  if (!context.isMock) {
+    createAuditEntry({
+      workspaceId: context.workspaceId,
+      actorId: context.userId,
+      actorType: "AI",
+      action: "AI_PLAN_EXECUTE",
+      target: `AI executed ${successfulCount} actions (${overallStatus})`,
+      entityType: "ai_plan",
+      entityId: plan.id,
+      after: {
+        planId: plan.id,
+        status: overallStatus,
+        successfulCount,
+        failedCount,
+        blockedCount,
+        actions: receiptItems,
+      },
+      source: "AI_ASSISTANT",
+    }).catch(() => {});
+  }
 
   const finalResult: AiExecutionResult = {
     planId: plan.id,

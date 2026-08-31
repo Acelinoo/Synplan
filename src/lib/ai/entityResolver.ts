@@ -598,7 +598,7 @@ export function resolveWorkspaceMember(
   }
 
   // 2. Exact Email Match
-  const exactEmail = members.find((m) => m.email.toLowerCase() === clean.toLowerCase());
+  const exactEmail = members.find((m) => m.email && m.email.toLowerCase() === clean.toLowerCase());
   if (exactEmail) {
     return {
       member: exactEmail,

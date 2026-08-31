@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
-import { Role } from "@prisma/client";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { validateRequestBody } from "@/lib/validation/apiValidator";
+import { CreatePhaseSchema } from "@/lib/validation/schemas";
+import { createApiErrorResponse } from "@/lib/apiErrors";
+import { publishWorkspaceEvent } from "@/lib/realtimeServer";
+import { idempotency } from "@/lib/idempotency";
+import { createAuditEntry } from "@/lib/audit";
 
 // GET /api/phases?projectId=... - Retrieve phases for a project
 export async function GET(req: NextRequest) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { searchParams } = new URL(req.url);
     const projectId = searchParams.get("projectId");
     const workspaceId = searchParams.get("workspaceId");
 
     if (!projectId) {
       return NextResponse.json(
-        { success: false, error: "projectId query param is required" },
+        { success: false, error: "Bad Request", message: "projectId query param is required" },
         { status: 400 }
       );
     }
@@ -31,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     if (!project) {
       return NextResponse.json(
-        { success: false, error: "Project not found or not authorized" },
+        { success: false, error: "Not Found", message: "Project not found or not authorized" },
         { status: 404 }
       );
     }
@@ -46,44 +55,58 @@ export async function GET(req: NextRequest) {
       orderBy: { order: "asc" },
     });
 
-    return NextResponse.json({ success: true, data: phases });
+    return NextResponse.json({ success: true, data: phases }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("GET /api/phases error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to fetch phases", message: error?.message },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to fetch phases");
   }
 }
 
-// POST /api/phases - Create new phase in project
+// POST /api/phases - Create new phase in project with idempotency protection
 export async function POST(req: NextRequest) {
+  const idempotencyKey = idempotency.extractKey(req);
+  let authContext: any = null;
+
   try {
-    const body = await req.json();
-    const { projectId, name, description, order, workspaceId } = body;
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
+    const validation = await validateRequestBody(req, CreatePhaseSchema);
+    if (validation.errorResponse) return validation.errorResponse;
+
+    const { projectId, name, description, order, workspaceId } = validation.data;
 
     // Strict Permission Guard: phases.create
     const { auth, errorResponse } = await requireAuthGuard(req, "phases.create", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
+    authContext = auth;
 
-    if (!projectId || !name || typeof name !== "string" || !name.trim()) {
-      return NextResponse.json(
-        { success: false, error: "projectId and valid name are required" },
-        { status: 400 }
-      );
+    const targetWorkspaceId = auth.workspaceId;
+
+    // Check Idempotency Key if provided
+    if (idempotencyKey) {
+      const { cachedResponse, isInFlight } = idempotency.check(idempotencyKey, targetWorkspaceId, auth.userId);
+      if (cachedResponse) return cachedResponse;
+      if (isInFlight) {
+        return NextResponse.json(
+          { success: false, error: "Conflict", message: "Phase creation is already in flight for this key" },
+          { status: 409 }
+        );
+      }
+      idempotency.start(idempotencyKey, targetWorkspaceId, auth.userId);
     }
 
     // Verify project belongs to authorized workspace
     const project = await prisma.project.findFirst({
-      where: { id: projectId, workspaceId: auth.workspaceId },
+      where: { id: projectId, workspaceId: targetWorkspaceId },
       select: { id: true, name: true },
     });
 
     if (!project) {
+      if (idempotencyKey) idempotency.release(idempotencyKey, targetWorkspaceId, auth.userId);
       return NextResponse.json(
-        { success: false, error: "Project not found or not authorized" },
+        { success: false, error: "Not Found", message: "Project not found or not authorized" },
         { status: 404 }
       );
     }
@@ -108,27 +131,44 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Record Activity
-    await prisma.auditLog.create({
-      data: {
-        workspaceId: auth.workspaceId,
-        actorId: auth.user.id,
-        action: `Created Phase "${phase.name}" in project "${project.name}"`,
-        target: project.name,
-        entityType: "Phase",
-        entityId: phase.id,
-      },
+    // Publish server-authoritative realtime event
+    await publishWorkspaceEvent(auth, "PHASE_CREATED", phase as any, {
+      projectId,
     });
 
+    // Record Activity with IP
+    await createAuditEntry({
+      workspaceId: auth.workspaceId,
+      actorId: auth.user.id,
+      actorType: "USER",
+      action: "PHASE_CREATE",
+      target: `Created Phase "${phase.name}" in project "${project.name}"`,
+      entityType: "phase",
+      entityId: phase.id,
+      after: phase,
+      requestId: req.headers.get("x-request-id"),
+      source: "WEB",
+      ipAddress: auth.ipAddress,
+    });
+
+    const responseBody = {
+      success: true,
+      data: phase,
+      message: `Phase "${phase.name}" created successfully`,
+    };
+
+    if (idempotencyKey) {
+      idempotency.save(idempotencyKey, 201, responseBody, targetWorkspaceId, auth.userId);
+    }
+
     return NextResponse.json(
-      { success: true, data: phase, message: `Phase "${phase.name}" created successfully` },
-      { status: 201 }
+      responseBody,
+      { status: 201, headers: rateLimit.rateLimitHeaders }
     );
   } catch (error: any) {
-    console.error("POST /api/phases error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to create phase", message: error?.message },
-      { status: 500 }
-    );
+    if (idempotencyKey && authContext) {
+      idempotency.release(idempotencyKey, authContext.workspaceId, authContext.userId);
+    }
+    return createApiErrorResponse(error, "Failed to create phase");
   }
 }

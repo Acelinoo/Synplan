@@ -251,15 +251,24 @@ model Notification {
 model AuditLog {
   id          String    @id @default(cuid())
   workspaceId String
-  actorId     String
+  actorId     String?
+  actorType   String    @default("USER") // USER, AI, SYSTEM
   action      String
-  target      String
+  target      String    @default("")
   entityType  String?
   entityId    String?
+  before      Json?
+  after       Json?
+  requestId   String?
+  source      String?   @default("WEB") // TASK_FORM, AI_ASSISTANT, SYSTEM_JOB, API, etc.
   metadata    Json?
   ipAddress   String?
   timestamp   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, timestamp])
+  @@index([workspaceId, entityType, timestamp])
+  @@index([workspaceId, action, timestamp])
+  @@index([workspaceId, actorId, timestamp])
 }
+

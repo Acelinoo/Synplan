@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import {
-  Sparkles,
+  Bot,
   PlusCircle,
   Edit3,
   Trash2,
@@ -32,7 +32,7 @@ interface SlashCommandAutocompleteProps {
 }
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  Sparkles,
+  Bot,
   PlusCircle,
   Edit3,
   Trash2,
@@ -164,7 +164,7 @@ export function SlashCommandAutocomplete({
                         : item.badge === "HIGH"
                         ? "bg-amber-500/15 text-amber-500 border border-amber-500/30"
                         : item.badge === "OWNER" || item.badge === "ADMIN"
-                        ? "bg-purple-500/15 text-purple-400 border border-purple-500/30"
+                        ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
                         : "bg-surface border border-border/70 text-muted-foreground"
                     )}
                   >

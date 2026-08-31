@@ -1,6 +1,6 @@
 import { Role, TaskPriority, TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { realtimeClient } from "@/lib/realtime";
+import { publishWorkspaceEvent } from "@/lib/realtimeServer";
 import { createNotification } from "@/lib/notificationService";
 import {
   AiActionType,
@@ -84,7 +84,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
           description: payload.description || null,
           deadline: deadlineDate,
           status: payload.status || "ACTIVE",
-          color: payload.color || "#6366F1",
+          color: payload.color || "#0284C7",
           progress: 0,
         },
       });
@@ -195,7 +195,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       }
 
       // Realtime Broadcast
-      realtimeClient.broadcast(`workspace:${workspaceId}`, "PROJECT_CREATED", {
+      publishWorkspaceEvent(workspaceId, "PROJECT_CREATED", {
         id: project.id,
         workspaceId,
         name: project.name,
@@ -209,7 +209,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         assignedMemberIds,
         createdAt: project.createdAt.toISOString(),
         updatedAt: project.updatedAt.toISOString(),
-      }, { workspaceId, projectId: project.id });
+      } as any, { projectId: project.id }).catch(() => {});
 
       return {
         success: true,
@@ -325,9 +325,9 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
           }).catch(() => {});
         }
 
-        realtimeClient.broadcast(`workspace:${workspaceId}`, "PROJECT_UPDATED", {
+        publishWorkspaceEvent(workspaceId, "PROJECT_UPDATED", {
           id: targetProjectId,
-        }, { workspaceId, projectId: targetProjectId });
+        } as any, { projectId: targetProjectId }).catch(() => {});
       }
 
       return {
@@ -444,14 +444,14 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         }).catch(() => {});
       }
 
-      realtimeClient.broadcast(`workspace:${workspaceId}`, "TASK_CREATED", {
+      publishWorkspaceEvent(workspaceId, "TASK_CREATED", {
         id: task.id,
         workspaceId,
         projectId: targetProjectId,
         title: task.title,
         status: task.status.toLowerCase() as any,
         priority: task.priority.toLowerCase() as any,
-      }, { workspaceId, projectId: targetProjectId });
+      } as any, { projectId: targetProjectId, taskId: task.id }).catch(() => {});
 
       return {
         success: true,
@@ -566,11 +566,11 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         }).catch(() => {});
       }
 
-      realtimeClient.broadcast(`workspace:${workspaceId}`, "TASK_ASSIGNED", {
+      publishWorkspaceEvent(workspaceId, "TASK_ASSIGNED", {
         taskId: updated.id,
-        assigneeId,
-        assigneeName: assigneeName || null,
-      }, { workspaceId, projectId: updated.projectId, taskId: updated.id });
+        assigneeId: assigneeId || undefined,
+        assigneeName: assigneeName || undefined,
+      }, { projectId: updated.projectId, taskId: updated.id }).catch(() => {});
 
       const summaryText = payload.unassign
         ? `Berhasil menghapus penugasan task "${updated.title}".`
@@ -635,11 +635,11 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         },
       });
 
-      realtimeClient.broadcast(`workspace:${workspaceId}`, "PHASE_CREATED", {
+      publishWorkspaceEvent(workspaceId, "PHASE_CREATED", {
         id: phase.id,
         projectId: targetProjId,
         name: phase.name,
-      }, { workspaceId, projectId: targetProjId });
+      } as any, { projectId: targetProjId }).catch(() => {});
 
       return {
         success: true,
@@ -704,12 +704,12 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         },
       });
 
-      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "PROJECT_UPDATED", {
+      publishWorkspaceEvent(context.workspaceId, "PROJECT_UPDATED", {
         id: updated.id,
         name: updated.name,
         status: updated.status.toLowerCase() as any,
         deadline: updated.deadline ? updated.deadline.toISOString() : "",
-      }, { workspaceId: context.workspaceId, projectId: updated.id });
+      } as any, { projectId: updated.id }).catch(() => {});
 
       return {
         success: true,
@@ -872,15 +872,15 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         }).catch(() => {});
       }
 
-      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "TASK_UPDATED", {
+      publishWorkspaceEvent(context.workspaceId, "TASK_UPDATED", {
         id: updated.id,
         projectId: updated.projectId,
         title: updated.title,
         status: updated.status.toLowerCase() as any,
         priority: updated.priority.toLowerCase() as any,
-        assigneeId: updated.assigneeId,
-        phaseId: updated.phaseId,
-      }, { workspaceId: context.workspaceId, projectId: updated.projectId, taskId: updated.id });
+        assigneeId: updated.assigneeId || undefined,
+        phaseId: updated.phaseId || undefined,
+      } as any, { projectId: updated.projectId, taskId: updated.id }).catch(() => {});
 
       const fieldChanges: string[] = [];
       if (payload.title && payload.title !== previousState.title) fieldChanges.push(`judul "${updated.title}"`);
@@ -950,9 +950,9 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
 
       await prisma.project.delete({ where: { id: targetId } });
 
-      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "PROJECT_DELETED", {
+      publishWorkspaceEvent(context.workspaceId, "PROJECT_DELETED", {
         id: targetId,
-      }, { workspaceId: context.workspaceId, projectId: targetId });
+      }, { projectId: targetId }).catch(() => {});
 
       return {
         success: true,
@@ -1010,10 +1010,10 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         data: { totalTasks: { decrement: 1 } },
       }).catch(() => {});
 
-      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "TASK_DELETED", {
+      publishWorkspaceEvent(context.workspaceId, "TASK_DELETED", {
         id: targetId,
         projectId: task.projectId,
-      }, { workspaceId: context.workspaceId, projectId: task.projectId, taskId: targetId });
+      }, { projectId: task.projectId, taskId: targetId }).catch(() => {});
 
       return {
         success: true,
@@ -1065,12 +1065,12 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         data: { name: payload.name || undefined, order: payload.order !== undefined ? payload.order : undefined },
       });
 
-      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "PHASE_UPDATED", {
+      publishWorkspaceEvent(context.workspaceId, "PHASE_UPDATED", {
         id: updated.id,
         projectId: phase.projectId,
         name: updated.name,
         order: updated.order,
-      }, { workspaceId: context.workspaceId, projectId: phase.projectId });
+      } as any, { projectId: phase.projectId }).catch(() => {});
 
       return {
         success: true,
@@ -1118,10 +1118,10 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
 
       await prisma.phase.delete({ where: { id: payload.id } });
 
-      realtimeClient.broadcast(`workspace:${context.workspaceId}`, "PHASE_DELETED", {
+      publishWorkspaceEvent(context.workspaceId, "PHASE_DELETED", {
         id: payload.id,
         projectId: phase.projectId,
-      }, { workspaceId: context.workspaceId, projectId: phase.projectId });
+      }, { projectId: phase.projectId }).catch(() => {});
 
       return {
         success: true,

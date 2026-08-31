@@ -355,7 +355,7 @@ export default function ProjectDetailPage() {
           <div className="flex items-center gap-3 pt-1">
             <div
               className="h-3.5 w-3.5 rounded-md shrink-0 shadow-xs"
-              style={{ backgroundColor: project.color || "#6366F1" }}
+              style={{ backgroundColor: project.color || "#0284C7" }}
             />
             <h1 className="text-2xl font-bold tracking-tight text-foreground">{project.name}</h1>
             <span
@@ -431,7 +431,7 @@ export default function ProjectDetailPage() {
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${computedProgress}%`, backgroundColor: project.color || "#6366F1" }}
+                  style={{ width: `${computedProgress}%`, backgroundColor: project.color || "#0284C7" }}
                 />
               </div>
             </SpotlightCard>

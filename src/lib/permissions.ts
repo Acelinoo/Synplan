@@ -35,7 +35,10 @@ export type Permission =
   // Analytics, Audit & Search
   | "analytics.view"
   | "audit.view"
-  | "search.view";
+  | "search.view"
+  // Backup & Recovery
+  | "backup.export"
+  | "backup.view";
 
 /**
  * Canonical Role-to-Permission Mapping.
@@ -68,6 +71,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "analytics.view",
     "audit.view",
     "search.view",
+    "backup.export",
+    "backup.view",
   ],
   ADMIN: [
     "workspace.view",
@@ -94,6 +99,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "analytics.view",
     "audit.view",
     "search.view",
+    "backup.export",
+    "backup.view",
   ],
   MEMBER: [
     "workspace.view",

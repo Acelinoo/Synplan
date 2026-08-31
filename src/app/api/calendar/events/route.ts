@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { createApiErrorResponse } from "@/lib/apiErrors";
 
 export async function GET(req: NextRequest) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { searchParams } = new URL(req.url);
     const workspaceId = searchParams.get("workspaceId");
     const projectId = searchParams.get("projectId");
@@ -26,7 +31,7 @@ export async function GET(req: NextRequest) {
       });
       if (!proj || proj.workspaceId !== targetWorkspaceId) {
         return NextResponse.json(
-          { success: false, error: "Project not found in this workspace" },
+          { success: false, error: "Not Found", message: "Project not found in this workspace" },
           { status: 404 }
         );
       }
@@ -79,7 +84,7 @@ export async function GET(req: NextRequest) {
       fullDate: t.dueDate ? t.dueDate.toISOString() : "",
       status: t.status,
       priority: t.priority,
-      color: t.project?.color || "#6366F1",
+      color: t.project?.color || "#0284C7",
       project: t.project,
       assignee: t.assignee,
     }));
@@ -110,12 +115,8 @@ export async function GET(req: NextRequest) {
         startDate: start.toISOString(),
         endDate: end.toISOString(),
       },
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("GET /api/calendar/events error:", error?.message);
-    return NextResponse.json(
-      { success: false, error: error?.message || "Failed to fetch calendar events", data: [] },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to fetch calendar events");
   }
 }

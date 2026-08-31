@@ -153,14 +153,25 @@ export function TaskModal({ editingTask, defaultStatus = "todo", onClose }: Task
     }
   }, [isOpen, editingTask, defaultStatus, projects, squadList, projectId]);
 
-  if (!isOpen) return null;
-
-  const handleClose = () => {
+  const handleClose = React.useCallback(() => {
     setCreateTaskModalOpen(false);
     if (onClose) {
       onClose();
     }
-  };
+  }, [setCreateTaskModalOpen, onClose]);
+
+  // Handle ESC key to close modal
+  React.useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && isOpen) {
+        handleClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, handleClose]);
+
+  if (!isOpen) return null;
 
   const handleAddSubtask = (e: React.FormEvent) => {
     e.preventDefault();

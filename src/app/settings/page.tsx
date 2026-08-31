@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Settings, Shield, Palette, Building2, Terminal } from "lucide-react";
+import { Settings, Shield, Palette, Building2, Terminal, Database } from "lucide-react";
 import { WorkspaceProfileForm } from "@/components/settings/WorkspaceProfileForm";
 import { ThemeSettingsPanel } from "@/components/settings/ThemeSettingsPanel";
 import { RbacMatrixTable } from "@/components/settings/RbacMatrixTable";
 import { AuditLogStream } from "@/components/settings/AuditLogStream";
+import { DisasterRecoveryPanel } from "@/components/settings/DisasterRecoveryPanel";
 import { AnimatedGrid } from "@/components/ui/animated-grid";
 
 export default function SettingsPage() {
@@ -24,7 +25,7 @@ export default function SettingsPage() {
           </span>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Manage workspace profile identity, user interface themes, RBAC permission matrices, and security audit logs.
+          Manage workspace profile identity, user interface themes, RBAC permission matrices, backup resilience, and security audit logs.
         </p>
       </div>
 
@@ -38,7 +39,12 @@ export default function SettingsPage() {
         <ThemeSettingsPanel />
       </div>
 
-      {/* 3. RBAC Matrix & Security */}
+      {/* 3. Disaster Recovery & Backup */}
+      <div id="resilience">
+        <DisasterRecoveryPanel />
+      </div>
+
+      {/* 4. RBAC Matrix & Security */}
       <div id="security" className="space-y-6">
         <RbacMatrixTable />
         <AuditLogStream />

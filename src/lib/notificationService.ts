@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { realtimeClient } from "@/lib/realtime";
+import { publishWorkspaceEvent } from "@/lib/realtimeServer";
 import { NotificationType, NotificationItem } from "@/types";
 
 interface CreateNotificationParams {
@@ -63,8 +63,7 @@ export async function createNotification(params: CreateNotificationParams): Prom
     };
 
     // 4. Broadcast Realtime Event to workspace channel
-    realtimeClient.broadcast(`workspace:${params.workspaceId}`, "NOTIFICATION_CREATED", payload, {
-      workspaceId: params.workspaceId,
+    await publishWorkspaceEvent(params.workspaceId, "NOTIFICATION_CREATED", payload, {
       taskId: params.entityType === "TASK" ? params.entityId : undefined,
       projectId: params.entityType === "PROJECT" ? params.entityId : undefined,
     });

@@ -22,6 +22,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useUiStore, useWorkspaceStore, useNotificationStore } from "@/store";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import { usePresence } from "@/hooks/usePresence";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/apiClient";
 import { NotificationItem, NotificationType } from "@/types";
@@ -45,7 +46,7 @@ const routeNames: Record<string, string> = {
 export function TopHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { activeWorkspace, setActiveWorkspace, setWorkspaces, setWorkspaceValidated, workspaces } = useWorkspaceStore();
+  const { activeWorkspace, setActiveWorkspace, setWorkspaces, setWorkspaceValidated, workspaces, setCurrentUser: setStoreCurrentUser } = useWorkspaceStore();
   const { theme, setTheme, toggleSidebar, addToast } = useUiStore();
   const {
     notifications,
@@ -57,6 +58,7 @@ export function TopHeader() {
   } = useNotificationStore();
 
   const { onEvent } = useRealtime();
+  const { onlineUsers } = usePresence();
 
   const [isThemeMenuOpen, setIsThemeMenuOpen] = React.useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = React.useState(false);
@@ -70,6 +72,7 @@ export function TopHeader() {
         const res = await apiClient.getSession();
         if (res.success && res.data?.authenticated && res.data.user) {
           setCurrentUser(res.data.user);
+          setStoreCurrentUser(res.data.user);
 
           const userWorkspaces = Array.isArray(res.data.workspaces) ? res.data.workspaces : [];
           setWorkspaces(userWorkspaces);
@@ -98,7 +101,7 @@ export function TopHeader() {
       }
     }
     loadUserSession();
-  }, [setActiveWorkspace, setWorkspaces, setWorkspaceValidated]);
+  }, [setActiveWorkspace, setWorkspaces, setWorkspaceValidated, setStoreCurrentUser]);
 
   React.useEffect(() => {
     try {
@@ -144,6 +147,20 @@ export function TopHeader() {
       unsubReadAll();
     };
   }, [onEvent, addNotification, markAsRead, markAllAsRead]);
+
+  // Handle Escape key to close any open dropdowns or modals
+  React.useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setIsThemeMenuOpen(false);
+        setIsProfileMenuOpen(false);
+        setIsNotifMenuOpen(false);
+        setIsSignOutConfirmOpen(false);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const currentPageTitle = routeNames[pathname] || "Workspace";
 
@@ -236,6 +253,7 @@ export function TopHeader() {
       <div className="flex items-center gap-3 text-xs sm:text-sm">
         <button
           onClick={toggleSidebar}
+          aria-label="Toggle Navigation Sidebar"
           className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white hover:bg-white/20 md:hidden"
           title="Toggle Navigation"
         >
@@ -247,7 +265,38 @@ export function TopHeader() {
       </div>
 
       {/* Right: Actions, Command Palette, Theme, Profile */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        {/* Live Presence Squad Avatars */}
+        {onlineUsers.length > 0 && (
+          <div className="hidden lg:flex items-center -space-x-1.5 overflow-hidden mr-1" aria-label="Active team members">
+            {onlineUsers.slice(0, 4).map((u) => (
+              <div
+                key={u.userId}
+                title={`${u.name} (${u.email || "Active"})`}
+                className="relative inline-flex h-7 w-7 rounded-full ring-2 ring-[#102A45] bg-sky-600 text-white text-[11px] font-bold items-center justify-center select-none shadow-xs cursor-default transition-transform hover:scale-110 hover:z-10"
+              >
+                {u.avatarUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={u.avatarUrl}
+                    alt={u.name}
+                    loading="lazy"
+                    className="h-full w-full rounded-full object-cover"
+                  />
+                ) : (
+                  <span>{(u.name || "U").charAt(0).toUpperCase()}</span>
+                )}
+                <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full bg-emerald-400 ring-1 ring-[#102A45]" />
+              </div>
+            ))}
+            {onlineUsers.length > 4 && (
+              <div className="flex h-7 w-7 rounded-full ring-2 ring-[#102A45] bg-slate-700 text-white text-[10px] font-bold items-center justify-center">
+                +{onlineUsers.length - 4}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Subtle Realtime Connection Dot Indicator */}
         <RealtimeStatusBadge className="hidden sm:inline-flex mr-0.5" />
 
@@ -436,11 +485,19 @@ export function TopHeader() {
         <div className="relative">
           <button
             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+            aria-expanded={isProfileMenuOpen}
+            aria-label="User profile menu"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 border border-white/30 text-white font-bold text-xs hover:ring-2 hover:ring-white/40 transition-all cursor-pointer overflow-hidden"
             title="User Profile"
           >
             {currentUser?.avatarUrl ? (
-              <img src={currentUser.avatarUrl} alt={currentUser.name} className="h-full w-full object-cover" />
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={currentUser.avatarUrl}
+                alt={currentUser.name}
+                loading="lazy"
+                className="h-full w-full object-cover"
+              />
             ) : (
               currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "A"
             )}

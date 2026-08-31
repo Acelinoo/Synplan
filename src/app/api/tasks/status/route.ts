@@ -2,31 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
 import { createNotification } from "@/lib/notificationService";
-import { TaskStatus, Role } from "@prisma/client";
+import { TaskStatus, ProjectStatus } from "@prisma/client";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { validateRequestBody } from "@/lib/validation/apiValidator";
+import { UpdateTaskStatusSchema } from "@/lib/validation/schemas";
+import { createApiErrorResponse } from "@/lib/apiErrors";
+import { publishWorkspaceEvent } from "@/lib/realtimeServer";
+import { createAuditEntry } from "@/lib/audit";
 
-// PATCH /api/tasks/status - Update Kanban task status & evaluate micro-feedback metadata
+// PATCH /api/tasks/status - Update Kanban task status & evaluate micro-feedback metadata atomically
 export async function PATCH(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { taskId, status, actorId } = body;
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
 
-    if (!taskId || !status) {
-      return NextResponse.json(
-        { success: false, error: "taskId and status are required" },
-        { status: 400 }
-      );
-    }
+    const validation = await validateRequestBody(req, UpdateTaskStatusSchema);
+    if (validation.errorResponse) return validation.errorResponse;
 
-    const validStatus = Object.values(TaskStatus).find(
-      (s) => s.toLowerCase() === status.toLowerCase()
-    );
-
-    if (!validStatus) {
-      return NextResponse.json(
-        { success: false, error: `Invalid task status: ${status}` },
-        { status: 400 }
-      );
-    }
+    const { taskId, status } = validation.data;
 
     const existingTask = await prisma.task.findUnique({
       where: { id: taskId },
@@ -35,7 +28,7 @@ export async function PATCH(req: NextRequest) {
 
     if (!existingTask) {
       return NextResponse.json(
-        { success: false, error: "Task not found" },
+        { success: false, error: "Not Found", message: "Task not found" },
         { status: 404 }
       );
     }
@@ -46,21 +39,9 @@ export async function PATCH(req: NextRequest) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    const validStatus = status as TaskStatus;
     const isMovingToDone = validStatus === TaskStatus.DONE;
     const now = new Date();
-
-    const updatedTask = await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        status: validStatus,
-        completedAt: isMovingToDone ? now : null,
-      },
-      include: {
-        assignee: { select: { id: true, name: true, email: true } },
-        subtasks: true,
-        project: true,
-      },
-    });
 
     // Timing evaluation
     let timingSummary = "On track";
@@ -77,55 +58,115 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
-    // Evaluate Project Progress & Milestone
-    let projectCompleted = false;
-    let milestoneTriggered = false;
-    let newProjectProgress = 0;
+    // Execute atomic transaction for task status + project progress & milestone synchronization
+    const {
+      updatedTask,
+      newProjectProgress,
+      nextProjectStatus,
+      milestoneTriggered,
+      projectCompleted,
+    } = await prisma.$transaction(async (tx) => {
+      const updated = await tx.task.update({
+        where: { id: taskId },
+        data: {
+          status: validStatus,
+          completedAt: isMovingToDone ? now : null,
+        },
+        include: {
+          assignee: { select: { id: true, name: true, email: true } },
+          subtasks: true,
+          project: true,
+        },
+      });
 
-    if (existingTask.projectId) {
-      const [totalTasks, doneTasks] = await Promise.all([
-        prisma.task.count({ where: { projectId: existingTask.projectId } }),
-        prisma.task.count({ where: { projectId: existingTask.projectId, status: TaskStatus.DONE } }),
-      ]);
+      let progress = 0;
+      let nextStatus = existingTask.project?.status || ProjectStatus.ACTIVE;
+      let pCompleted = false;
+      let mTriggered = false;
 
-      newProjectProgress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-      projectCompleted = totalTasks > 0 && doneTasks === totalTasks;
+      if (existingTask.projectId) {
+        const [totalTasks, doneTasks] = await Promise.all([
+          tx.task.count({ where: { projectId: existingTask.projectId } }),
+          tx.task.count({ where: { projectId: existingTask.projectId, status: TaskStatus.DONE } }),
+        ]);
 
-      if ([25, 50, 75, 100].includes(newProjectProgress)) {
-        milestoneTriggered = true;
-      }
+        progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+        pCompleted = totalTasks > 0 && doneTasks === totalTasks;
 
-      let nextProjectStatus = existingTask.project.status;
-      if (existingTask.project.status !== "ARCHIVED") {
-        if (projectCompleted) {
-          nextProjectStatus = "COMPLETED";
-        } else if (existingTask.project.status === "COMPLETED") {
-          nextProjectStatus = "ACTIVE";
+        if ([25, 50, 75, 100].includes(progress)) {
+          mTriggered = true;
         }
+
+        if (existingTask.project?.status !== ProjectStatus.ARCHIVED) {
+          if (pCompleted) {
+            nextStatus = ProjectStatus.COMPLETED;
+          } else if (existingTask.project?.status === ProjectStatus.COMPLETED) {
+            nextStatus = ProjectStatus.ACTIVE;
+          }
+        }
+
+        await tx.project.update({
+          where: { id: existingTask.projectId },
+          data: {
+            progress,
+            status: nextStatus,
+          },
+        });
       }
 
-      await prisma.project.update({
-        where: { id: existingTask.projectId },
-        data: {
-          progress: newProjectProgress,
-          status: nextProjectStatus,
-        },
-      });
+      return {
+        updatedTask: updated,
+        newProjectProgress: progress,
+        nextProjectStatus: nextStatus,
+        milestoneTriggered: mTriggered,
+        projectCompleted: pCompleted,
+      };
+    }, { maxWait: 10000, timeout: 20000 });
+
+    // Publish server-authoritative project progress update if project exists
+    if (existingTask.projectId) {
+      publishWorkspaceEvent(auth, "PROJECT_UPDATED", {
+        id: existingTask.projectId,
+        progress: newProjectProgress,
+        status: nextProjectStatus,
+      } as any, {
+        projectId: existingTask.projectId,
+      }).catch(() => {});
     }
 
-    // Record audit trail
-    try {
-      await prisma.auditLog.create({
-        data: {
-          workspaceId: existingTask.workspaceId,
-          actorId: actorId || "system",
-          action: "TASK_STATUS_UPDATE",
-          target: `Task "${existingTask.title}" -> ${validStatus} (${timingSummary})`,
-        },
-      });
-    } catch (auditErr) {
-      console.warn("Audit log creation skipped:", auditErr);
-    }
+    // Publish server-authoritative task status change event
+    await publishWorkspaceEvent(auth, "TASK_STATUS_CHANGED", {
+      taskId,
+      previousStatus: existingTask.status,
+      newStatus: validStatus,
+      projectId: existingTask.projectId,
+      completedAt: updatedTask.completedAt ? updatedTask.completedAt.toISOString() : undefined,
+      evaluator: {
+        timingSummary,
+        milestoneTriggered,
+        projectCompleted,
+        projectProgress: newProjectProgress,
+      },
+    }, {
+      projectId: existingTask.projectId,
+      taskId,
+    });
+
+    // Record audit trail with user identity and IP tracking
+    await createAuditEntry({
+      workspaceId: existingTask.workspaceId,
+      actorId: auth.userId,
+      actorType: "USER",
+      action: "TASK_STATUS_CHANGE",
+      target: `Task "${existingTask.title}" -> ${validStatus} (${timingSummary})`,
+      entityType: "task",
+      entityId: taskId,
+      before: { status: existingTask.status, title: existingTask.title, projectId: existingTask.projectId },
+      after: { status: validStatus, title: updatedTask.title, projectId: updatedTask.projectId, completedAt: updatedTask.completedAt },
+      requestId: req.headers.get("x-request-id"),
+      source: "TASK_FORM",
+      ipAddress: auth.ipAddress,
+    });
 
     // Dispatch direct notification to task assignee if changed by another user
     if (existingTask.assigneeId && existingTask.assigneeId !== auth.userId) {
@@ -154,16 +195,8 @@ export async function PATCH(req: NextRequest) {
         projectProgress: newProjectProgress,
       },
       message: `Task moved to ${validStatus}`,
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("PATCH /api/tasks/status error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to update task status",
-        message: error?.message || "Internal server error",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to update task status");
   }
 }

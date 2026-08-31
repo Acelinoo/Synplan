@@ -1,6 +1,6 @@
 /**
  * SYNPLAN — Realtime Event & Transport Type Definitions
- * Phase 12B: Realtime Infrastructure Foundation
+ * Phase 3: Real-Time Sync & Live Collaboration Engine
  */
 
 import { Task, Project, Phase, WorkspaceMember, Subtask, NotificationItem } from "./index";
@@ -30,7 +30,9 @@ export type RealtimeEventType =
   | "PHASES_REORDERED"
   // Member Events
   | "MEMBER_ADDED"
+  | "MEMBER_INVITED"
   | "MEMBER_UPDATED"
+  | "MEMBER_ROLE_UPDATED"
   | "MEMBER_REMOVED"
   // Comment Events
   | "COMMENT_CREATED"
@@ -38,13 +40,24 @@ export type RealtimeEventType =
   | "COMMENT_DELETED"
   // Activity / Audit Events
   | "ACTIVITY_CREATED"
-  // Notification Events (Phase 13)
+  // Notification Events
   | "NOTIFICATION_CREATED"
   | "NOTIFICATION_READ"
   | "NOTIFICATIONS_READ_ALL"
+  // AI Batch Mutations
+  | "BATCH_MUTATION"
   // Presence & Ping Events
   | "USER_PRESENCE"
   | "PING";
+
+export interface BatchMutationPayload {
+  tasksCreated?: Task[];
+  tasksUpdated?: Array<Partial<Task> & { id: string }>;
+  tasksDeleted?: string[];
+  phasesUpdated?: Phase[];
+  projectsUpdated?: Array<Partial<Project> & { id: string }>;
+  summary?: string;
+}
 
 export interface RealtimeEventPayloadMap {
   TASK_CREATED: Task;
@@ -52,15 +65,15 @@ export interface RealtimeEventPayloadMap {
   TASK_DELETED: { id: string; projectId?: string };
   TASK_STATUS_CHANGED: {
     taskId: string;
-    previousStatus: string;
+    previousStatus?: string;
     newStatus: string;
     projectId?: string;
     completedAt?: string;
     evaluator?: {
-      timingSummary: string;
-      milestoneTriggered: boolean;
-      projectCompleted: boolean;
-      projectProgress: number;
+      timingSummary?: string;
+      milestoneTriggered?: boolean;
+      projectCompleted?: boolean;
+      projectProgress?: number;
     };
   };
   TASK_ASSIGNED: { taskId: string; assigneeId?: string; assigneeName?: string };
@@ -70,12 +83,14 @@ export interface RealtimeEventPayloadMap {
   PROJECT_DELETED: { id: string };
 
   PHASE_CREATED: Phase;
-  PHASE_UPDATED: Partial<Phase> & { id: string };
+  PHASE_UPDATED: Partial<Phase> & { id: string; projectId?: string };
   PHASE_DELETED: { id: string; projectId: string };
   PHASES_REORDERED: { projectId: string; phases: { id: string; order: number }[] };
 
   MEMBER_ADDED: WorkspaceMember;
+  MEMBER_INVITED: WorkspaceMember;
   MEMBER_UPDATED: Partial<WorkspaceMember> & { id: string };
+  MEMBER_ROLE_UPDATED: Partial<WorkspaceMember> & { id: string; userId?: string; newRole?: string };
   MEMBER_REMOVED: { id: string; userId?: string };
 
   COMMENT_CREATED: {
@@ -103,12 +118,15 @@ export interface RealtimeEventPayloadMap {
   NOTIFICATION_READ: { id: string; userId: string };
   NOTIFICATIONS_READ_ALL: { userId: string; workspaceId?: string };
 
-  USER_PRESENCE: { userId: string; userName: string; activeTab?: string };
+  BATCH_MUTATION: BatchMutationPayload;
+
+  USER_PRESENCE: { userId: string; userName: string; avatarUrl?: string | null; activeTab?: string };
   PING: { timestamp: number };
 }
 
 export interface RealtimeEvent<T extends RealtimeEventType = RealtimeEventType> {
   id: string;
+  eventId?: string;
   type: T;
   workspaceId: string;
   projectId?: string;

@@ -147,10 +147,17 @@ export const apiClient = {
   },
 
   // Projects
-  async getProjects(params?: { workspaceId?: string; status?: string }, options?: { bypassCache?: boolean }) {
+  async getProjects(
+    params?: { workspaceId?: string; status?: string; search?: string; page?: number; limit?: number; cursor?: string },
+    options?: { bypassCache?: boolean }
+  ) {
     const search = new URLSearchParams();
     if (params?.workspaceId) search.set("workspaceId", params.workspaceId);
     if (params?.status) search.set("status", params.status);
+    if (params?.search) search.set("search", params.search);
+    if (params?.page) search.set("page", params.page.toString());
+    if (params?.limit) search.set("limit", params.limit.toString());
+    if (params?.cursor) search.set("cursor", params.cursor);
     const qs = search.toString() ? `?${search.toString()}` : "";
     return request<any[]>(`/api/projects${qs}`, undefined, { ttlMs: 4000, bypassCache: options?.bypassCache });
   },
@@ -230,12 +237,32 @@ export const apiClient = {
   },
 
   // Tasks
-  async getTasks(params?: { workspaceId?: string; projectId?: string; status?: string; priority?: string }, options?: { bypassCache?: boolean }) {
+  async getTasks(
+    params?: {
+      workspaceId?: string;
+      projectId?: string;
+      phaseId?: string;
+      status?: string;
+      priority?: string;
+      assigneeId?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+      cursor?: string;
+    },
+    options?: { bypassCache?: boolean }
+  ) {
     const search = new URLSearchParams();
     if (params?.workspaceId) search.set("workspaceId", params.workspaceId);
     if (params?.projectId) search.set("projectId", params.projectId);
+    if (params?.phaseId) search.set("phaseId", params.phaseId);
     if (params?.status) search.set("status", params.status);
     if (params?.priority) search.set("priority", params.priority);
+    if (params?.assigneeId) search.set("assigneeId", params.assigneeId);
+    if (params?.search) search.set("search", params.search);
+    if (params?.page) search.set("page", params.page.toString());
+    if (params?.limit) search.set("limit", params.limit.toString());
+    if (params?.cursor) search.set("cursor", params.cursor);
     const qs = search.toString() ? `?${search.toString()}` : "";
     return request<any[]>(`/api/tasks${qs}`, undefined, { ttlMs: 3000, bypassCache: options?.bypassCache });
   },
@@ -393,8 +420,22 @@ export const apiClient = {
   },
 
   // Team
-  async getTeamMembers(workspaceId?: string, options?: { bypassCache?: boolean }) {
-    const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+  async getTeamMembers(
+    paramsOrWorkspaceId?: string | { workspaceId?: string; role?: string; search?: string; page?: number; limit?: number; cursor?: string },
+    options?: { bypassCache?: boolean }
+  ) {
+    const search = new URLSearchParams();
+    if (typeof paramsOrWorkspaceId === "string") {
+      if (paramsOrWorkspaceId) search.set("workspaceId", paramsOrWorkspaceId);
+    } else if (paramsOrWorkspaceId) {
+      if (paramsOrWorkspaceId.workspaceId) search.set("workspaceId", paramsOrWorkspaceId.workspaceId);
+      if (paramsOrWorkspaceId.role) search.set("role", paramsOrWorkspaceId.role);
+      if (paramsOrWorkspaceId.search) search.set("search", paramsOrWorkspaceId.search);
+      if (paramsOrWorkspaceId.page) search.set("page", paramsOrWorkspaceId.page.toString());
+      if (paramsOrWorkspaceId.limit) search.set("limit", paramsOrWorkspaceId.limit.toString());
+      if (paramsOrWorkspaceId.cursor) search.set("cursor", paramsOrWorkspaceId.cursor);
+    }
+    const query = search.toString() ? `?${search.toString()}` : "";
     return request<any[]>(`/api/team/members${query}`, undefined, { ttlMs: 5000, bypassCache: options?.bypassCache });
   },
   async inviteTeamMember(data: { workspaceId?: string; name: string; email: string; role?: string }) {
@@ -406,10 +447,10 @@ export const apiClient = {
     invalidateApiCache("/api/dashboard/summary");
     return res;
   },
-  async updateMemberRole(memberId: string, role: string) {
+  async updateMemberRole(memberId: string, role: string, workspaceId?: string) {
     const res = await request<any>("/api/team/members", {
-      method: "PUT",
-      body: JSON.stringify({ memberId, role }),
+      method: "PATCH",
+      body: JSON.stringify({ memberId, role, workspaceId }),
     });
     invalidateApiCache("/api/team/members");
     return res;
@@ -424,10 +465,12 @@ export const apiClient = {
   },
 
   // Notifications
-  async getNotifications(params?: { filter?: "all" | "unread" | "read"; limit?: number }) {
+  async getNotifications(params?: { filter?: "all" | "unread" | "read"; limit?: number; page?: number; cursor?: string }) {
     const q = new URLSearchParams();
     if (params?.filter) q.append("filter", params.filter);
     if (params?.limit) q.append("limit", params.limit.toString());
+    if (params?.page) q.append("page", params.page.toString());
+    if (params?.cursor) q.append("cursor", params.cursor);
     const query = q.toString() ? `?${q.toString()}` : "";
     return request<any>(`/api/notifications${query}`);
   },

@@ -1,5 +1,6 @@
 import { prisma } from "../src/lib/prisma";
 import { requireAuthGuard } from "../src/lib/authGuard";
+import { createSession } from "../src/lib/auth/session";
 import { NextRequest } from "next/server";
 import { Role } from "@prisma/client";
 
@@ -26,11 +27,14 @@ function createMockRequest(headers: Record<string, string>, url: string = "http:
 async function runIsolationTestSuite() {
   console.log("===============================================================");
   console.log("   SYNPLAN MULTI-TENANT & WORKSPACE ISOLATION SECURITY SUITE   ");
-  console.log("===============================================================\n");
+  console.log("===============================================================");
 
   let userAId = "";
   let userBId = "";
   let userCId = "";
+  let sessionTokenA = "";
+  let sessionTokenB = "";
+  let sessionTokenC = "";
   let wsAId = "";
   let wsBId = "";
   let projAId = "";
@@ -49,6 +53,8 @@ async function runIsolationTestSuite() {
       data: { name: "User Alpha (Tenant A)", email: `user-a-${Date.now()}@isolation.dev`, role: "OWNER" },
     });
     userAId = userA.id;
+    const sessionA = await createSession(userAId);
+    sessionTokenA = sessionA.sessionToken;
 
     const wsA = await prisma.workspace.create({
       data: { name: "Workspace Alpha", slug: `ws-alpha-${Date.now()}`, ownerId: userAId },
@@ -60,12 +66,12 @@ async function runIsolationTestSuite() {
     });
 
     const projA = await prisma.project.create({
-      data: { workspaceId: wsAId, name: "Alpha Confidential Initiative", color: "#6366F1", status: "ACTIVE" },
+      data: { workspaceId: wsA.id, name: "Alpha Secret Core", color: "#3B82F6", status: "ACTIVE" },
     });
     projAId = projA.id;
 
     const taskA = await prisma.task.create({
-      data: { workspaceId: wsAId, projectId: projAId, title: "Alpha Security Architecture", status: "TODO", priority: "HIGH" },
+      data: { workspaceId: wsA.id, projectId: projAId, title: "Alpha Critical Vulnerability Audit", status: "IN_PROGRESS", priority: "HIGH" },
     });
     taskAId = taskA.id;
 
@@ -74,6 +80,8 @@ async function runIsolationTestSuite() {
       data: { name: "User Beta (Tenant B)", email: `user-b-${Date.now()}@isolation.dev`, role: "OWNER" },
     });
     userBId = userB.id;
+    const sessionB = await createSession(userBId);
+    sessionTokenB = sessionB.sessionToken;
 
     const wsB = await prisma.workspace.create({
       data: { name: "Workspace Beta", slug: `ws-beta-${Date.now()}`, ownerId: userBId },
@@ -85,7 +93,7 @@ async function runIsolationTestSuite() {
     });
 
     const projB = await prisma.project.create({
-      data: { workspaceId: wsBB_id(wsB.id), name: "Beta Proprietary Engine", color: "#10B981", status: "ACTIVE" },
+      data: { workspaceId: wsB.id, name: "Beta Proprietary Engine", color: "#10B981", status: "ACTIVE" },
     });
     projBId = projB.id;
 
@@ -99,6 +107,8 @@ async function runIsolationTestSuite() {
       data: { name: "User Charlie (Viewer in A)", email: `user-c-${Date.now()}@isolation.dev`, role: "VIEWER" },
     });
     userCId = userC.id;
+    const sessionC = await createSession(userCId);
+    sessionTokenC = sessionC.sessionToken;
 
     await prisma.workspaceMember.create({
       data: { workspaceId: wsAId, userId: userCId, role: Role.VIEWER },
@@ -109,7 +119,10 @@ async function runIsolationTestSuite() {
     // -------------------------------------------------------------
     // TEST 1: User A accessing Workspace A (Allowed)
     // -------------------------------------------------------------
-    const reqA_A = createMockRequest({ "x-synplan-user-id": userAId, "x-synplan-workspace-id": wsAId });
+    const reqA_A = createMockRequest({
+      cookie: `synplan_session_token=${sessionTokenA}`,
+      "x-synplan-workspace-id": wsAId,
+    });
     const authA_A = await requireAuthGuard(reqA_A, Role.VIEWER, wsAId);
     if (authA_A.auth && authA_A.auth.workspaceId === wsAId) {
       results.push({ test: "Tenant A Accessing Workspace A", expected: "200 Allowed", actual: "200 Allowed", status: "PASS" });
@@ -120,7 +133,10 @@ async function runIsolationTestSuite() {
     // -------------------------------------------------------------
     // TEST 2: User A accessing Workspace B (Cross-Tenant Breach -> Denied 403)
     // -------------------------------------------------------------
-    const reqA_B = createMockRequest({ "x-synplan-user-id": userAId, "x-synplan-workspace-id": wsBId });
+    const reqA_B = createMockRequest({
+      cookie: `synplan_session_token=${sessionTokenA}`,
+      "x-synplan-workspace-id": wsBId,
+    });
     const authA_B = await requireAuthGuard(reqA_B, Role.VIEWER, wsBId);
     if (authA_B.errorResponse && authA_B.errorResponse.status === 403) {
       results.push({ test: "User A → Workspace B (Cross-Tenant Boundary)", expected: "403 Forbidden", actual: "403 Forbidden", status: "PASS" });
@@ -131,7 +147,10 @@ async function runIsolationTestSuite() {
     // -------------------------------------------------------------
     // TEST 3: User B accessing Workspace A (Cross-Tenant Breach -> Denied 403)
     // -------------------------------------------------------------
-    const reqB_A = createMockRequest({ "x-synplan-user-id": userBId, "x-synplan-workspace-id": wsAId });
+    const reqB_A = createMockRequest({
+      cookie: `synplan_session_token=${sessionTokenB}`,
+      "x-synplan-workspace-id": wsAId,
+    });
     const authB_A = await requireAuthGuard(reqB_A, Role.VIEWER, wsAId);
     if (authB_A.errorResponse && authB_A.errorResponse.status === 403) {
       results.push({ test: "User B → Workspace A (Cross-Tenant Boundary)", expected: "403 Forbidden", actual: "403 Forbidden", status: "PASS" });
@@ -142,7 +161,10 @@ async function runIsolationTestSuite() {
     // -------------------------------------------------------------
     // TEST 4: RBAC Privilege Enforcement - VIEWER attempting ADMIN operation
     // -------------------------------------------------------------
-    const reqC_Admin = createMockRequest({ "x-synplan-user-id": userCId, "x-synplan-workspace-id": wsAId });
+    const reqC_Admin = createMockRequest({
+      cookie: `synplan_session_token=${sessionTokenC}`,
+      "x-synplan-workspace-id": wsAId,
+    });
     const authC_Admin = await requireAuthGuard(reqC_Admin, Role.ADMIN, wsAId);
     if (authC_Admin.errorResponse && authC_Admin.errorResponse.status === 403) {
       results.push({ test: "User C (VIEWER) → ADMIN Action (RBAC Guard)", expected: "403 Forbidden", actual: "403 Forbidden", status: "PASS" });
@@ -153,7 +175,10 @@ async function runIsolationTestSuite() {
     // -------------------------------------------------------------
     // TEST 5: RBAC Privilege Enforcement - OWNER attempting ADMIN/OWNER operation (Allowed)
     // -------------------------------------------------------------
-    const reqA_Admin = createMockRequest({ "x-synplan-user-id": userAId, "x-synplan-workspace-id": wsAId });
+    const reqA_Admin = createMockRequest({
+      cookie: `synplan_session_token=${sessionTokenA}`,
+      "x-synplan-workspace-id": wsAId,
+    });
     const authA_Admin = await requireAuthGuard(reqA_Admin, Role.ADMIN, wsAId);
     if (authA_Admin.auth && authA_Admin.auth.role === Role.OWNER) {
       results.push({ test: "User A (OWNER) → ADMIN Action (RBAC Guard)", expected: "200 Allowed", actual: "200 Allowed", status: "PASS" });
@@ -164,7 +189,10 @@ async function runIsolationTestSuite() {
     // -------------------------------------------------------------
     // TEST 6: Non-Existent User Spoofing (Rejected 401)
     // -------------------------------------------------------------
-    const reqFakeUser = createMockRequest({ "x-synplan-user-id": "usr-fake-spoofed-id", "x-synplan-workspace-id": wsAId });
+    const reqFakeUser = createMockRequest({
+      cookie: "synplan_session_token=fake_invalid_session_token_0000000000000000",
+      "x-synplan-workspace-id": wsAId,
+    });
     const authFake = await requireAuthGuard(reqFakeUser, Role.VIEWER, wsAId);
     if (authFake.errorResponse && authFake.errorResponse.status === 401) {
       results.push({ test: "Spoofed Non-Existent User Identity", expected: "401 Unauthorized", actual: "401 Unauthorized", status: "PASS" });
@@ -183,6 +211,9 @@ async function runIsolationTestSuite() {
     if (taskBId) await prisma.task.deleteMany({ where: { id: taskBId } });
     if (projAId) await prisma.project.deleteMany({ where: { id: projAId } });
     if (projBId) await prisma.project.deleteMany({ where: { id: projBId } });
+    if (userAId || userBId || userCId) {
+      await prisma.session.deleteMany({ where: { userId: { in: [userAId, userBId, userCId].filter(Boolean) } } });
+    }
     if (wsAId) await prisma.workspaceMember.deleteMany({ where: { workspaceId: wsAId } });
     if (wsBId) await prisma.workspaceMember.deleteMany({ where: { workspaceId: wsBId } });
     if (wsAId) await prisma.workspace.deleteMany({ where: { id: wsAId } });
@@ -197,9 +228,12 @@ async function runIsolationTestSuite() {
   console.log("            ISOLATION & RBAC TEST SUITE RESULTS                ");
   console.log("===============================================================");
   console.table(results);
-}
 
-function wsBB_id(id: string) { return id; }
+  const hasFailures = results.some((r) => r.status === "FAIL");
+  if (hasFailures) {
+    process.exit(1);
+  }
+}
 
 runIsolationTestSuite()
   .catch((e) => {

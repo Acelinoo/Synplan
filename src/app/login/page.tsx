@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { Sparkles, Shield, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Shield, AlertCircle, FolderKanban } from "lucide-react";
 
 function LoginContent() {
   const searchParams = useSearchParams();
@@ -37,16 +37,15 @@ function LoginContent() {
 
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center bg-background p-4 overflow-hidden select-none">
-      {/* Dynamic Background Glows */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-primary/15 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-10 right-1/4 w-[350px] h-[350px] bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
+      {/* Subtle Background Glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Authentication Card */}
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-border/80 bg-card/90 backdrop-blur-xl p-8 shadow-2xl transition-all duration-300 hover:border-border">
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-border/80 bg-card p-8 shadow-2xl transition-all duration-300">
         {/* Brand Header */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-primary/10 border border-primary/20 text-primary shadow-inner mb-1">
-            <Sparkles className="h-7 w-7" />
+          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-primary text-primary-foreground shadow-xs mb-1">
+            <FolderKanban className="h-7 w-7" />
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tight text-foreground sm:text-3xl">
@@ -77,7 +76,7 @@ function LoginContent() {
             type="button"
             disabled={loadingProvider !== null}
             onClick={() => handleOAuthLogin("google")}
-            className="group relative flex w-full items-center justify-center gap-3 rounded-xl border border-border/90 bg-surface/80 px-4 py-3.5 text-sm font-semibold text-foreground shadow-xs transition-all duration-200 hover:bg-muted hover:border-primary/40 hover:shadow-md active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            className="group relative flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-3.5 text-sm font-semibold text-foreground shadow-xs transition-all duration-200 hover:bg-muted hover:border-primary/40 hover:shadow-xs active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             {loadingProvider === "google" ? (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -110,7 +109,7 @@ function LoginContent() {
             type="button"
             disabled={loadingProvider !== null}
             onClick={() => handleOAuthLogin("github")}
-            className="group relative flex w-full items-center justify-center gap-3 rounded-xl border border-border/90 bg-surface/80 px-4 py-3.5 text-sm font-semibold text-foreground shadow-xs transition-all duration-200 hover:bg-muted hover:border-primary/40 hover:shadow-md active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            className="group relative flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-3.5 text-sm font-semibold text-foreground shadow-xs transition-all duration-200 hover:bg-muted hover:border-primary/40 hover:shadow-xs active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             {loadingProvider === "github" ? (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />

@@ -158,7 +158,7 @@ export function convertProjectPlanToActions(plan: AIProjectPlan): AiAction[] {
       name: plan.project.name,
       description: plan.project.description,
       deadline: plan.project.deadline,
-      color: plan.project.color || "#6366F1",
+      color: plan.project.color || "#0284C7",
       status: plan.project.status || "ACTIVE",
       phases: plan.phases.map((ph, idx) => ({
         name: ph.name,

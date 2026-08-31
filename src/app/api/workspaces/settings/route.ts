@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { validateRequestBody } from "@/lib/validation/apiValidator";
+import { UpdateWorkspaceSettingsSchema } from "@/lib/validation/schemas";
+import { createApiErrorResponse } from "@/lib/apiErrors";
 
 // PUT /api/workspaces/settings - Update workspace configuration & settings
 export async function PUT(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { workspaceId, name, slug, logoUrl, actorId } = body;
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
+    const validation = await validateRequestBody(req, UpdateWorkspaceSettingsSchema);
+    if (validation.errorResponse) return validation.errorResponse;
+
+    const { workspaceId, name, slug, logoUrl } = validation.data;
 
     let targetWorkspaceId = workspaceId;
     if (!targetWorkspaceId) {
@@ -16,7 +25,7 @@ export async function PUT(req: NextRequest) {
 
     if (!targetWorkspaceId) {
       return NextResponse.json(
-        { success: false, error: "workspaceId is required to update settings" },
+        { success: false, error: "Bad Request", message: "workspaceId is required to update settings" },
         { status: 400 }
       );
     }
@@ -28,7 +37,7 @@ export async function PUT(req: NextRequest) {
 
     if (!existing) {
       return NextResponse.json(
-        { success: false, error: "Workspace not found" },
+        { success: false, error: "Not Found", message: "Workspace not found" },
         { status: 404 }
       );
     }
@@ -39,22 +48,14 @@ export async function PUT(req: NextRequest) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    // 3. IDOR / Tenant Boundary Verification
-    if (auth.workspaceId !== existing.id) {
-      return NextResponse.json(
-        { success: false, error: "Forbidden: You cannot modify another workspace's settings" },
-        { status: 403 }
-      );
-    }
-
-    // 4. Check slug collision if slug is changing
+    // 3. Check slug collision if slug is changing
     if (slug && slug !== existing.slug) {
       const slugCollision = await prisma.workspace.findUnique({
         where: { slug: slug.trim().toLowerCase() },
       });
       if (slugCollision && slugCollision.id !== existing.id) {
         return NextResponse.json(
-          { success: false, error: "Workspace slug is already in use by another workspace" },
+          { success: false, error: "Conflict", message: "Workspace slug is already in use by another workspace" },
           { status: 409 }
         );
       }
@@ -69,14 +70,15 @@ export async function PUT(req: NextRequest) {
       },
     });
 
-    // Record audit log
+    // Record audit log with IP
     try {
       await prisma.auditLog.create({
         data: {
           workspaceId: existing.id,
-          actorId: auth.userId || actorId || existing.ownerId,
+          actorId: auth.userId,
           action: "WORKSPACE_SETTINGS_UPDATE",
           target: `Updated workspace "${updated.name}" settings`,
+          ipAddress: auth.ipAddress,
         },
       });
     } catch (auditError) {
@@ -87,16 +89,8 @@ export async function PUT(req: NextRequest) {
       success: true,
       data: updated,
       message: "Workspace settings updated successfully",
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("PUT /api/workspaces/settings error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to update workspace settings",
-        message: error?.message || "Internal server error",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to update workspace settings");
   }
 }

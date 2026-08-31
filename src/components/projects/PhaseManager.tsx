@@ -37,7 +37,7 @@ export function PhaseManager({
   projectId,
   phases,
   tasks,
-  projectColor = "#6366F1",
+  projectColor = "#0284C7",
   onPhasesChanged,
 }: PhaseManagerProps) {
   const { addToast } = useUiStore();

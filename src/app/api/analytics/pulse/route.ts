@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { createApiErrorResponse } from "@/lib/apiErrors";
 
 // GET /api/analytics/pulse - Weekly velocity & sprint throughput telemetry
 export async function GET(req: NextRequest) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { searchParams } = new URL(req.url);
     const workspaceId = searchParams.get("workspaceId");
 
@@ -47,12 +52,8 @@ export async function GET(req: NextRequest) {
         throughputStatus: "OPTIMAL_HIGH",
         updatedAt: new Date().toISOString(),
       },
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("GET /api/analytics/pulse error:", error?.message);
-    return NextResponse.json(
-      { success: false, error: error?.message || "Failed to fetch pulse analytics" },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to fetch pulse analytics");
   }
 }

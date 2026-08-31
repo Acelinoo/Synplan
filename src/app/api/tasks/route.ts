@@ -2,11 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
 import { createNotification } from "@/lib/notificationService";
-import { TaskStatus, TaskPriority, Role } from "@prisma/client";
+import { TaskStatus, TaskPriority } from "@prisma/client";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { validateRequestBody } from "@/lib/validation/apiValidator";
+import { CreateTaskSchema } from "@/lib/validation/schemas";
+import { createApiErrorResponse } from "@/lib/apiErrors";
+import { parsePaginationParams } from "@/lib/pagination";
+import { publishWorkspaceEvent } from "@/lib/realtimeServer";
+import { idempotency } from "@/lib/idempotency";
+import { createAuditEntry } from "@/lib/audit";
 
 // GET /api/tasks - Retrieve tasks list for authorized workspace
 export async function GET(req: NextRequest) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { searchParams } = new URL(req.url);
     const workspaceId = searchParams.get("workspaceId");
     const projectId = searchParams.get("projectId");
@@ -14,6 +25,10 @@ export async function GET(req: NextRequest) {
     const statusParam = searchParams.get("status")?.toUpperCase();
     const priorityParam = searchParams.get("priority")?.toUpperCase();
     const assigneeId = searchParams.get("assigneeId");
+    const search = searchParams.get("search")?.trim();
+
+    // Parse standardized pagination parameters
+    const pagination = parsePaginationParams(req, { defaultLimit: 50, maxLimit: 100 });
 
     // Verify workspace membership & authorization (tasks.view)
     const { auth, errorResponse } = await requireAuthGuard(req, "tasks.view", workspaceId || undefined);
@@ -24,7 +39,6 @@ export async function GET(req: NextRequest) {
     const whereClause: any = { workspaceId: auth.workspaceId };
 
     if (projectId) {
-      // Validate that the requested project belongs to this workspace
       const proj = await prisma.project.findFirst({
         where: { id: projectId, workspaceId: auth.workspaceId },
         select: { id: true },
@@ -46,7 +60,18 @@ export async function GET(req: NextRequest) {
       whereClause.priority = priorityParam as TaskPriority;
     }
 
-    const tasks = await prisma.task.findMany({
+    if (search) {
+      whereClause.OR = [
+        { title: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    // Count total matching records for pagination metadata
+    const total = await prisma.task.count({ where: whereClause });
+
+    // Query paginated items
+    const queryOptions: any = {
       where: whereClause,
       include: {
         assignee: {
@@ -63,25 +88,51 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: [{ order: "asc" }, { createdAt: "desc" }],
-    });
+      take: pagination.limit,
+    };
+
+    if (pagination.cursor) {
+      queryOptions.skip = 1;
+      queryOptions.cursor = { id: pagination.cursor };
+    } else {
+      queryOptions.skip = pagination.skip;
+    }
+
+    const tasks = await prisma.task.findMany(queryOptions);
+
+    const totalPages = Math.ceil(total / pagination.limit) || 1;
+    const hasMore = pagination.page < totalPages || (tasks.length === pagination.limit && tasks.length > 0);
+    const nextCursor = hasMore && tasks.length > 0 ? tasks[tasks.length - 1].id : null;
 
     return NextResponse.json({
       success: true,
       data: tasks,
-    });
+      pagination: {
+        total,
+        page: pagination.page,
+        limit: pagination.limit,
+        totalPages,
+        hasMore,
+        nextCursor,
+      },
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("GET /api/tasks error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to retrieve tasks", message: error?.message },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to retrieve tasks");
   }
 }
 
-// POST /api/tasks - Create new task in authorized workspace
+// POST /api/tasks - Create new task in authorized workspace with idempotency protection
 export async function POST(req: NextRequest) {
+  const idempotencyKey = idempotency.extractKey(req);
+  let authContext: any = null;
+
   try {
-    const body = await req.json();
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
+    const validation = await validateRequestBody(req, CreateTaskSchema);
+    if (validation.errorResponse) return validation.errorResponse;
+
     const {
       workspaceId,
       projectId,
@@ -94,22 +145,29 @@ export async function POST(req: NextRequest) {
       dueDate,
       tags,
       subtasks,
-    } = body;
+    } = validation.data;
 
     // Strict Permission Guard: tasks.create
     const { auth, errorResponse } = await requireAuthGuard(req, "tasks.create", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
-
-    if (!title || typeof title !== "string" || !title.trim()) {
-      return NextResponse.json(
-        { success: false, error: "Task title is required" },
-        { status: 400 }
-      );
-    }
+    authContext = auth;
 
     const targetWorkspaceId = auth.workspaceId;
+
+    // Check Idempotency Key if provided
+    if (idempotencyKey) {
+      const { cachedResponse, isInFlight } = idempotency.check(idempotencyKey, targetWorkspaceId, auth.userId);
+      if (cachedResponse) return cachedResponse;
+      if (isInFlight) {
+        return NextResponse.json(
+          { success: false, error: "Conflict", message: "Task creation is already in flight for this key" },
+          { status: 409 }
+        );
+      }
+      idempotency.start(idempotencyKey, targetWorkspaceId, auth.userId);
+    }
 
     // Resolve & verify project belongs to user's workspace
     let targetProjectId = projectId;
@@ -121,14 +179,14 @@ export async function POST(req: NextRequest) {
       : null;
 
     if (!existingProj) {
-      // Pick first project in this authorized workspace
       const firstProj = await prisma.project.findFirst({
         where: { workspaceId: targetWorkspaceId },
         select: { id: true },
       });
       if (!firstProj) {
+        if (idempotencyKey) idempotency.release(idempotencyKey, targetWorkspaceId, auth.userId);
         return NextResponse.json(
-          { success: false, error: "No projects found in this workspace to attach task" },
+          { success: false, error: "Bad Request", message: "No projects found in this workspace to attach task" },
           { status: 400 }
         );
       }
@@ -145,7 +203,6 @@ export async function POST(req: NextRequest) {
       if (phase) validPhaseId = phase.id;
     }
 
-    // If no phaseId specified, pick first phase of project if exists
     if (!validPhaseId) {
       const defaultPhase = await prisma.phase.findFirst({
         where: { projectId: targetProjectId },
@@ -173,18 +230,18 @@ export async function POST(req: NextRequest) {
     const task = await prisma.task.create({
       data: {
         workspaceId: targetWorkspaceId,
-        projectId: targetProjectId,
+        projectId: targetProjectId as string,
         phaseId: validPhaseId,
         title: title.trim(),
         description: description ? description.trim() : null,
-        status: (status?.toUpperCase() as TaskStatus) || TaskStatus.TODO,
-        priority: (priority?.toUpperCase() as TaskPriority) || TaskPriority.MEDIUM,
+        status: (status as TaskStatus) || TaskStatus.TODO,
+        priority: (priority as TaskPriority) || TaskPriority.MEDIUM,
         assigneeId: validAssigneeId,
         dueDate: dueDate ? new Date(dueDate) : null,
         tags: Array.isArray(tags) ? tags : [],
         subtasks: {
           create: Array.isArray(subtasks)
-            ? subtasks.map((st: { title: string; completed?: boolean }) => ({
+            ? subtasks.map((st) => ({
                 title: st.title.trim(),
                 completed: !!st.completed,
               }))
@@ -213,23 +270,45 @@ export async function POST(req: NextRequest) {
       }).catch(() => {});
     }
 
+    // Publish server-authoritative realtime event
+    await publishWorkspaceEvent(auth, "TASK_CREATED", task as any, {
+      projectId: task.projectId,
+      taskId: task.id,
+    });
+
+    // Record forensic audit log
+    await createAuditEntry({
+      workspaceId: targetWorkspaceId,
+      actorId: auth.userId,
+      actorType: "USER",
+      action: "TASK_CREATE",
+      target: `Task "${task.title}" created`,
+      entityType: "task",
+      entityId: task.id,
+      after: task,
+      requestId: req.headers.get("x-request-id"),
+      source: "TASK_FORM",
+      ipAddress: auth.ipAddress,
+    });
+
+    const responseBody = {
+      success: true,
+      data: task,
+      message: `Task "${task.title}" created successfully`,
+    };
+
+    if (idempotencyKey) {
+      idempotency.save(idempotencyKey, 201, responseBody, targetWorkspaceId, auth.userId);
+    }
+
     return NextResponse.json(
-      {
-        success: true,
-        data: task,
-        message: `Task "${task.title}" created successfully`,
-      },
-      { status: 201 }
+      responseBody,
+      { status: 201, headers: rateLimit.rateLimitHeaders }
     );
   } catch (error: any) {
-    console.error("POST /api/tasks error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to create task",
-        message: error?.message || "Internal server error",
-      },
-      { status: 500 }
-    );
+    if (idempotencyKey && authContext) {
+      idempotency.release(idempotencyKey, authContext.workspaceId, authContext.userId);
+    }
+    return createApiErrorResponse(error, "Failed to create task");
   }
 }

@@ -13,6 +13,7 @@ import { AnimatedGrid } from "@/components/ui/animated-grid";
 import { Skeleton, SkeletonCard, SkeletonAvatar } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/apiClient";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useRealtime } from "@/components/realtime/RealtimeProvider";
 import { cn } from "@/lib/utils";
 
 const InviteMemberModal = dynamic(
@@ -21,45 +22,81 @@ const InviteMemberModal = dynamic(
 );
 
 export default function TeamPage() {
-  const { members, setMembers, addMember, activeWorkspace } = useWorkspaceStore();
+  const { members, setMembers, addMember, updateMember, removeMember, activeWorkspace } = useWorkspaceStore();
   const { addToast } = useUiStore();
   const { can } = usePermissions();
+  const { onEvent } = useRealtime();
   const [isLoading, setIsLoading] = React.useState(members.length === 0);
   const [isInviteModalOpen, setIsInviteModalOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [roleFilter, setRoleFilter] = React.useState<string>("all");
   const [workloadFilter, setWorkloadFilter] = React.useState<"all" | "optimal" | "high" | "overloaded">("all");
 
-  React.useEffect(() => {
-    async function loadMembers() {
-      setIsLoading(true);
-      try {
-        const res = await apiClient.getTeamMembers();
-        if (res.success && Array.isArray(res.data)) {
-          const mappedMembers: WorkspaceMember[] = res.data.map((m: any) => ({
-            id: m.id,
-            workspaceId: m.workspaceId,
-            user: {
-              id: m.userId,
-              name: m.name,
-              email: m.email,
-              role: (m.role?.toLowerCase() || "member") as MemberRole,
-            },
+  const loadMembers = React.useCallback(async () => {
+    try {
+      const res = await apiClient.getTeamMembers();
+      if (res.success && Array.isArray(res.data)) {
+        const mappedMembers: WorkspaceMember[] = res.data.map((m: any) => ({
+          id: m.id,
+          workspaceId: m.workspaceId,
+          user: {
+            id: m.userId,
+            name: m.name,
+            email: m.email,
             role: (m.role?.toLowerCase() || "member") as MemberRole,
-            joinedAt: m.joinedAt,
-            assignedTasksCount: m.activeTaskCount || m.totalAssignedCount || 0,
-            workloadScore: m.workloadScore || 0,
-          }));
-          setMembers(mappedMembers);
-        }
-      } catch (err) {
-        console.warn("Failed to load team members from API:", err);
-      } finally {
-        setIsLoading(false);
+          },
+          role: (m.role?.toLowerCase() || "member") as MemberRole,
+          joinedAt: m.joinedAt,
+          assignedTasksCount: m.activeTaskCount || m.totalAssignedCount || 0,
+          workloadScore: m.workloadScore || 0,
+        }));
+        setMembers(mappedMembers);
       }
+    } catch (err) {
+      console.warn("Failed to load team members from API:", err);
     }
-    loadMembers();
   }, [setMembers]);
+
+  // --- Realtime Team Live Synchronization ---
+  React.useEffect(() => {
+    const unsubInvite = onEvent("MEMBER_INVITED", (event) => {
+      const raw = event.payload;
+      if (raw && raw.id) {
+        loadMembers();
+        apiClient.invalidate("/api/team/members");
+      }
+    });
+
+    const unsubRole = onEvent("MEMBER_ROLE_UPDATED", (event) => {
+      const raw = event.payload;
+      if (raw && raw.id) {
+        if (raw.role) {
+          updateMember(raw.id, { role: (raw.role.toLowerCase() || "member") as MemberRole });
+        }
+        loadMembers();
+        apiClient.invalidate("/api/team/members");
+      }
+    });
+
+    const unsubRemove = onEvent("MEMBER_REMOVED", (event) => {
+      const raw = event.payload;
+      if (raw && raw.id) {
+        removeMember(raw.id);
+        apiClient.invalidate("/api/team/members");
+      }
+    });
+
+    return () => {
+      unsubInvite();
+      unsubRole();
+      unsubRemove();
+    };
+  }, [onEvent, loadMembers, updateMember, removeMember]);
+
+  React.useEffect(() => {
+    setIsLoading(true);
+    loadMembers().finally(() => setIsLoading(false));
+  }, [loadMembers]);
 
   const handleInvite = async (newMemberData: { name: string; email: string; role: MemberRole }) => {
     try {

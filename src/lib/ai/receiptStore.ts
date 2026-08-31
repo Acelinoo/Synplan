@@ -4,8 +4,29 @@ import { Role } from "@prisma/client";
 // In-memory Receipt Store keyed by `${workspaceId}:${userId}` (TTL: 2 hours)
 const receiptCache = new Map<string, ExecutionReceipt[]>();
 const RECEIPT_TTL_MS = 2 * 60 * 60 * 1000;
+export const MAX_RECEIPT_USERS = 300;
+
+export function pruneReceiptCache(): void {
+  const now = Date.now();
+  for (const [key, list] of receiptCache.entries()) {
+    const valid = list.filter((r) => now - new Date(r.timestamp).getTime() <= RECEIPT_TTL_MS);
+    if (valid.length === 0) {
+      receiptCache.delete(key);
+    } else {
+      receiptCache.set(key, valid);
+    }
+  }
+
+  if (receiptCache.size > MAX_RECEIPT_USERS) {
+    const keysToDelete = Array.from(receiptCache.keys()).slice(0, receiptCache.size - MAX_RECEIPT_USERS);
+    for (const key of keysToDelete) {
+      receiptCache.delete(key);
+    }
+  }
+}
 
 export function recordExecutionReceipt(receipt: ExecutionReceipt): void {
+  pruneReceiptCache();
   const key = `${receipt.workspaceId}:${receipt.userId}`;
   const list = receiptCache.get(key) || [];
   list.unshift(receipt);

@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
 import { TaskStatus, TaskPriority } from "@prisma/client";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { createApiErrorResponse } from "@/lib/apiErrors";
 
 // GET /api/analytics/reports - Aggregated analytics metrics & distribution
 export async function GET(req: NextRequest) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { searchParams } = new URL(req.url);
     const workspaceId = searchParams.get("workspaceId");
 
@@ -28,7 +33,7 @@ export async function GET(req: NextRequest) {
           overdueList: [],
           averageTurnaroundHours: 0,
         },
-      });
+      }, { headers: rateLimit.rateLimitHeaders });
     }
 
     const now = new Date();
@@ -114,12 +119,8 @@ export async function GET(req: NextRequest) {
         overdueList: overdueTasks,
         averageTurnaroundHours: 9.4,
       },
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("GET /api/analytics/reports error:", error?.message);
-    return NextResponse.json(
-      { success: false, error: error?.message || "Failed to fetch analytics reports" },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to fetch analytics reports");
   }
 }

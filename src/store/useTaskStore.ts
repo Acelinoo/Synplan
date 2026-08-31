@@ -29,6 +29,11 @@ interface TaskState {
   setAssigneeFilter: (assigneeId: string | "all") => void;
   resetFilters: () => void;
   clearRecentCompleted: () => void;
+  applyBatchMutation: (batch: {
+    tasksCreated?: Task[];
+    tasksUpdated?: Array<Partial<Task> & { id: string }>;
+    tasksDeleted?: string[];
+  }) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
 }
@@ -106,6 +111,42 @@ export const useTaskStore = create<TaskState>((set) => ({
     set((state) => ({ filters: { ...state.filters, assigneeFilter: assigneeId } })),
   resetFilters: () => set({ filters: defaultFilters }),
   clearRecentCompleted: () => set({ recentCompletedTaskId: null }),
+  applyBatchMutation: (batch) =>
+    set((state) => {
+      let nextTasks = [...state.tasks];
+
+      // 1. Process deletions
+      if (batch.tasksDeleted && batch.tasksDeleted.length > 0) {
+        const delSet = new Set(batch.tasksDeleted);
+        nextTasks = nextTasks.filter((t) => !delSet.has(t.id));
+      }
+
+      // 2. Process creations
+      if (batch.tasksCreated && batch.tasksCreated.length > 0) {
+        const existingIds = new Set(nextTasks.map((t) => t.id));
+        const newTasks = batch.tasksCreated.filter((t) => !existingIds.has(t.id));
+        nextTasks = [...newTasks, ...nextTasks];
+      }
+
+      // 3. Process updates
+      if (batch.tasksUpdated && batch.tasksUpdated.length > 0) {
+        const updateMap = new Map(batch.tasksUpdated.map((u) => [u.id, u]));
+        nextTasks = nextTasks.map((t) => {
+          const up = updateMap.get(t.id);
+          if (!up) return t;
+          if (up.updatedAt && t.updatedAt) {
+            const incomingTime = new Date(up.updatedAt).getTime();
+            const existingTime = new Date(t.updatedAt).getTime();
+            if (!isNaN(incomingTime) && !isNaN(existingTime) && incomingTime < existingTime) {
+              return t;
+            }
+          }
+          return { ...t, ...up };
+        });
+      }
+
+      return { tasks: nextTasks };
+    }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
 }));

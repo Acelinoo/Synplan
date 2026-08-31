@@ -11,7 +11,6 @@ import {
   Trash2,
   Layers,
   Clock,
-  Sparkles,
   MessageSquare,
   Send,
 } from "lucide-react";
@@ -41,6 +40,17 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
   const [isPostingComment, setIsPostingComment] = React.useState(false);
 
   const taskId = task?.id;
+
+  // Handle ESC key to close drawer
+  React.useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && task) {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [task, onClose]);
 
   // Realtime: Auto-close drawer if task is deleted remotely
   React.useEffect(() => {

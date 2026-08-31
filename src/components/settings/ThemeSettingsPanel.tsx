@@ -44,8 +44,8 @@ export function ThemeSettingsPanel() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
-          { id: "dark", label: "Dark Mode (Obsidian)", desc: "Deep neutral zinc & indigo glow", icon: Moon },
-          { id: "light", label: "Light Mode", desc: "Crisp white & clean borders", icon: Sun },
+          { id: "dark", label: "Dark Mode", desc: "Deep oceanic dark background with navy accents", icon: Moon },
+          { id: "light", label: "Light Mode", desc: "Soft ambient background with deep navy header", icon: Sun },
           { id: "system", label: "System Sync", desc: "Follow OS preference automatically", icon: Laptop },
         ].map((item) => {
           const Icon = item.icon;

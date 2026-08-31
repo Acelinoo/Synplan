@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
-import { Role } from "@prisma/client";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { createApiErrorResponse } from "@/lib/apiErrors";
 
 // GET /api/search?q=...&workspaceId=... - Global scoped search across Projects, Tasks, and Team Members
 export async function GET(req: NextRequest) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("q")?.trim();
     const workspaceId = searchParams.get("workspaceId");
@@ -20,7 +24,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         success: true,
         data: { projects: [], tasks: [], members: [] },
-      });
+      }, { headers: rateLimit.rateLimitHeaders });
     }
 
     const targetWorkspaceId = auth.workspaceId;
@@ -111,12 +115,8 @@ export async function GET(req: NextRequest) {
           role: m.role.toLowerCase(),
         })),
       },
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("GET /api/search error:", error);
-    return NextResponse.json(
-      { success: false, error: "Search failed", message: error?.message },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Search failed");
   }
 }

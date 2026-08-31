@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { createApiErrorResponse } from "@/lib/apiErrors";
 
 export async function GET(req: NextRequest) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { searchParams } = new URL(req.url);
     const workspaceIdParam = searchParams.get("workspaceId");
 
@@ -32,11 +37,10 @@ export async function GET(req: NextRequest) {
           velocityRate: 0,
           recentActivities: [],
         },
-      });
+      }, { headers: rateLimit.rateLimitHeaders });
     }
 
     const now = new Date();
-
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     // 1. Parallel execution for high performance
@@ -113,7 +117,7 @@ export async function GET(req: NextRequest) {
     const velocityRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100 * 10) / 10 : 0;
 
     // Resolve actor names for audit logs
-    const actorIds = Array.from(new Set(auditLogs.map((l) => l.actorId).filter(Boolean)));
+    const actorIds = Array.from(new Set(auditLogs.map((l) => l.actorId).filter((id): id is string => Boolean(id))));
     const users = actorIds.length > 0
       ? await prisma.user.findMany({
           where: { id: { in: actorIds } },
@@ -173,15 +177,8 @@ export async function GET(req: NextRequest) {
         velocityRate,
         recentActivities,
       },
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("GET /api/dashboard/summary error:", error?.message);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error?.message || "Failed to fetch dashboard summary",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to fetch dashboard summary");
   }
 }

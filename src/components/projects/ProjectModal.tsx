@@ -4,7 +4,7 @@ import * as React from "react";
 import {
   X,
   FolderPlus,
-  Sparkles,
+  Wand2,
   Calendar,
   Layers,
   Check,
@@ -26,12 +26,12 @@ import { cn } from "@/lib/utils";
 import { AiPlan, AiCreationMode } from "@/lib/ai/types";
 
 const projectColors = [
-  { name: "Indigo", value: "#6366F1" },
+  { name: "Ocean", value: "#0284C7" },
+  { name: "Teal", value: "#0D9488" },
   { name: "Emerald", value: "#10B981" },
   { name: "Amber", value: "#F59E0B" },
   { name: "Rose", value: "#EF4444" },
-  { name: "Violet", value: "#8B5CF6" },
-  { name: "Sky", value: "#0EA5E9" },
+  { name: "Slate", value: "#475569" },
 ];
 
 const suggestionChips = [
@@ -64,7 +64,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
   const [name, setName] = React.useState(editingProject?.name || "");
   const [description, setDescription] = React.useState(editingProject?.description || "");
   const [deadline, setDeadline] = React.useState(editingProject?.deadline || "2026-09-30");
-  const [color, setColor] = React.useState(editingProject?.color || "#6366F1");
+  const [color, setColor] = React.useState(editingProject?.color || "#0284C7");
   const [status, setStatus] = React.useState<Project["status"]>(editingProject?.status || "active");
   const [selectedMembers, setSelectedMembers] = React.useState<string[]>(
     editingProject?.assignedMemberIds || []
@@ -131,7 +131,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
       setName(editingProject.name || "");
       setDescription(editingProject.description || "");
       setDeadline(editingProject.deadline ? editingProject.deadline.split("T")[0] : "2026-09-30");
-      setColor(editingProject.color || "#6366F1");
+      setColor(editingProject.color || "#0284C7");
       setStatus(editingProject.status || "active");
       setSelectedMembers(
         Array.isArray(editingProject.assignedMemberIds) && editingProject.assignedMemberIds.length > 0
@@ -143,7 +143,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
       setName("");
       setDescription("");
       setDeadline("2026-09-30");
-      setColor("#6366F1");
+      setColor("#0284C7");
       setStatus("active");
       setSelectedMembers([]);
       setAiPrompt("");
@@ -378,7 +378,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
             )}
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
               {modalMode === "AI" ? (
-                <Sparkles className="h-5 w-5" />
+                <Bot className="h-5 w-5" />
               ) : (
                 <FolderPlus className="h-5 w-5" />
               )}
@@ -427,13 +427,13 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm group-hover:scale-105 transition-transform">
-                      <Sparkles className="h-5 w-5" />
+                      <Bot className="h-5 w-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-foreground text-sm">Create with AI</h3>
                         <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-bold text-primary">
-                          ✨ Recommended
+                          Recommended
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -523,7 +523,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                             : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                         )}
                       >
-                        <Sparkles className="h-4 w-4 shrink-0" />
+                        <Wand2 className="h-4 w-4 shrink-0" />
                         <div>
                           <div className="font-bold">Smart Mode</div>
                           <div className="text-[10px] opacity-80 font-normal">Rekomendasi terstruktur</div>
@@ -593,7 +593,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                         </>
                       ) : (
                         <>
-                          <Sparkles className="h-4 w-4" />
+                          <Bot className="h-4 w-4" />
                           <span>Generate Project Plan</span>
                         </>
                       )}
@@ -606,7 +606,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                   <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
                     <div className="flex items-center justify-between border-b border-primary/20 pb-2">
                       <span className="font-bold text-xs text-primary flex items-center gap-1.5">
-                        <Sparkles className="h-4 w-4" /> Structured Project Preview
+                        <Layers className="h-4 w-4" /> Structured Project Preview
                       </span>
                       <div className="flex items-center gap-1.5">
                         <span className="rounded-md bg-primary/20 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
@@ -816,7 +816,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                       onClick={() => setModalMode("AI")}
                       className="text-[11px] text-primary hover:underline flex items-center gap-1 font-medium"
                     >
-                      <Sparkles className="h-3 w-3" /> Switch to AI
+                      <Bot className="h-3 w-3" /> Switch to AI
                     </button>
                   )}
                 </label>

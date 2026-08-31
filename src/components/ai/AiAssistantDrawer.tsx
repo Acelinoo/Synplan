@@ -3,7 +3,8 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import {
-  Sparkles,
+  Bot,
+  CheckCheck as CheckCheckIcon,
   X,
   Send,
   Loader2,
@@ -484,7 +485,7 @@ export function AiAssistantDrawer() {
         <div className="flex h-16 items-center justify-between border-b border-border px-5 bg-surface/50">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-xs">
-              <Sparkles className="h-5 w-5" />
+              <Bot className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -618,7 +619,7 @@ export function AiAssistantDrawer() {
                                 onClick={() => handleSendPrompt("Keduanya")}
                                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 border border-primary/30 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-all shadow-xs cursor-pointer"
                               >
-                                <Sparkles className="h-3 w-3" />
+                                <CheckCheckIcon className="h-3 w-3" />
                                 <span>Pilih Keduanya</span>
                               </button>
                             )}

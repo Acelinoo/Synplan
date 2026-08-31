@@ -64,6 +64,7 @@ function TasksContent() {
     updateTask,
     deleteTask,
     moveTaskStatus,
+    applyBatchMutation,
     filters,
     setSearchQuery,
     setPriorityFilter,
@@ -173,13 +174,26 @@ function TasksContent() {
       }
     });
 
+    const unsubBatch = onEvent("BATCH_MUTATION", (event) => {
+      const raw = event.payload;
+      if (raw) {
+        applyBatchMutation({
+          tasksCreated: raw.tasksCreated,
+          tasksUpdated: raw.tasksUpdated,
+          tasksDeleted: raw.tasksDeleted,
+        });
+        apiClient.invalidate("/api/tasks");
+      }
+    });
+
     return () => {
       unsubCreate();
       unsubUpdate();
       unsubStatus();
       unsubDelete();
+      unsubBatch();
     };
-  }, [onEvent, addTask, updateTask, deleteTask, moveTaskStatus]);
+  }, [onEvent, addTask, updateTask, deleteTask, moveTaskStatus, applyBatchMutation]);
 
   React.useEffect(() => {
     if (urlCreate === "true") {
@@ -594,7 +608,7 @@ function TasksContent() {
                             <div className="flex items-center gap-1.5">
                               <span
                                 className="h-2 w-2 rounded-full shrink-0"
-                                style={{ backgroundColor: taskProject.color || "#6366F1" }}
+                                style={{ backgroundColor: taskProject.color || "#0284C7" }}
                               />
                               <span className="font-medium text-foreground truncate max-w-[120px]">
                                 {taskProject.name}

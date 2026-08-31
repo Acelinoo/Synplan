@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
-import { Role } from "@prisma/client";
+import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
+import { validateRequestBody } from "@/lib/validation/apiValidator";
+import { UpdatePhaseSchema } from "@/lib/validation/schemas";
+import { createApiErrorResponse } from "@/lib/apiErrors";
+import { publishWorkspaceEvent } from "@/lib/realtimeServer";
+
+import { createAuditEntry } from "@/lib/audit";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -10,9 +16,18 @@ interface RouteParams {
 // PUT /api/phases/[id] - Edit Phase name / description / order
 export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { id } = await params;
-    const body = await req.json();
-    const { name, description, order, workspaceId } = body;
+    if (!id || typeof id !== "string") {
+      return NextResponse.json({ success: false, error: "Bad Request", message: "Invalid phase ID" }, { status: 400 });
+    }
+
+    const validation = await validateRequestBody(req, UpdatePhaseSchema);
+    if (validation.errorResponse) return validation.errorResponse;
+
+    const { name, description, order } = validation.data;
 
     const existingPhase = await prisma.phase.findUnique({
       where: { id },
@@ -20,7 +35,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     });
 
     if (!existingPhase) {
-      return NextResponse.json({ success: false, error: "Phase not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Not Found", message: "Phase not found" }, { status: 404 });
     }
 
     const { auth, errorResponse } = await requireAuthGuard(
@@ -35,42 +50,53 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     const updatedPhase = await prisma.phase.update({
       where: { id },
       data: {
-        name: typeof name === "string" && name.trim() ? name.trim() : existingPhase.name,
-        description: description !== undefined ? (description ? description.trim() : null) : existingPhase.description,
+        name: name ? name.trim() : existingPhase.name,
+        description: description !== undefined ? description : existingPhase.description,
         order: typeof order === "number" ? order : existingPhase.order,
       },
     });
 
-    // Record Activity
-    await prisma.auditLog.create({
-      data: {
-        workspaceId: auth.workspaceId,
-        actorId: auth.user.id,
-        action: `Updated Phase "${updatedPhase.name}" in project "${existingPhase.project.name}"`,
-        target: existingPhase.project.name,
-        entityType: "Phase",
-        entityId: updatedPhase.id,
-      },
+    // Publish server-authoritative realtime event
+    await publishWorkspaceEvent(auth, "PHASE_UPDATED", updatedPhase as any, {
+      projectId: existingPhase.projectId,
+    });
+
+    // Record Activity with IP
+    await createAuditEntry({
+      workspaceId: auth.workspaceId,
+      actorId: auth.user.id,
+      actorType: "USER",
+      action: "PHASE_UPDATE",
+      target: `Updated Phase "${updatedPhase.name}" in project "${existingPhase.project.name}"`,
+      entityType: "phase",
+      entityId: updatedPhase.id,
+      before: existingPhase,
+      after: updatedPhase,
+      requestId: req.headers.get("x-request-id"),
+      source: "WEB",
+      ipAddress: auth.ipAddress,
     });
 
     return NextResponse.json({
       success: true,
       data: updatedPhase,
       message: `Phase "${updatedPhase.name}" updated successfully`,
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("PUT /api/phases/[id] error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to update phase", message: error?.message },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to update phase");
   }
 }
 
 // DELETE /api/phases/[id] - Safe Phase Deletion (phases.delete - OWNER/ADMIN)
 export async function DELETE(req: NextRequest, { params }: RouteParams) {
   try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
     const { id } = await params;
+    if (!id || typeof id !== "string") {
+      return NextResponse.json({ success: false, error: "Bad Request", message: "Invalid phase ID" }, { status: 400 });
+    }
 
     const existingPhase = await prisma.phase.findUnique({
       where: { id },
@@ -81,7 +107,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     });
 
     if (!existingPhase) {
-      return NextResponse.json({ success: false, error: "Phase not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Not Found", message: "Phase not found" }, { status: 404 });
     }
 
     const { auth, errorResponse } = await requireAuthGuard(
@@ -98,7 +124,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json(
         {
           success: false,
-          error: `Cannot delete phase "${existingPhase.name}" because it contains ${existingPhase.tasks.length} task(s). Please reassign or delete the tasks first.`,
+          error: "Bad Request",
+          message: `Cannot delete phase "${existingPhase.name}" because it contains ${existingPhase.tasks.length} task(s). Please reassign or delete the tasks first.`,
         },
         { status: 400 }
       );
@@ -106,27 +133,34 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
 
     await prisma.phase.delete({ where: { id } });
 
-    // Record Activity
-    await prisma.auditLog.create({
-      data: {
-        workspaceId: auth.workspaceId,
-        actorId: auth.user.id,
-        action: `Deleted Phase "${existingPhase.name}" from project "${existingPhase.project.name}"`,
-        target: existingPhase.project.name,
-        entityType: "Phase",
-        entityId: id,
-      },
+    // Publish server-authoritative realtime event
+    await publishWorkspaceEvent(auth, "PHASE_DELETED", {
+      id,
+      projectId: existingPhase.projectId,
+    }, {
+      projectId: existingPhase.projectId,
+    });
+
+    // Record Activity with IP
+    await createAuditEntry({
+      workspaceId: auth.workspaceId,
+      actorId: auth.user.id,
+      actorType: "USER",
+      action: "PHASE_DELETE",
+      target: `Deleted Phase "${existingPhase.name}" from project "${existingPhase.project.name}"`,
+      entityType: "phase",
+      entityId: id,
+      before: existingPhase,
+      requestId: req.headers.get("x-request-id"),
+      source: "WEB",
+      ipAddress: auth.ipAddress,
     });
 
     return NextResponse.json({
       success: true,
       message: `Phase "${existingPhase.name}" deleted successfully`,
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("DELETE /api/phases/[id] error:", error);
-    return NextResponse.json(
-      { success: false, error: "Failed to delete phase", message: error?.message },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to delete phase");
   }
 }

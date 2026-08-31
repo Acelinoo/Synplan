@@ -1,6 +1,6 @@
 /**
- * SYNPLAN — Supabase Realtime & Multi-Channel Client Infrastructure
- * Phase 12B: Realtime Foundation Layer
+ * SYNPLAN — Supabase Realtime Client Infrastructure
+ * Phase 3: Real-Time Sync & Live Collaboration Engine
  */
 
 import {
@@ -11,48 +11,55 @@ import {
   RealtimeWildcardHandler,
   RealtimeSubscription,
 } from "@/types/realtime";
+import { createClient, SupabaseClient, RealtimeChannel } from "@supabase/supabase-js";
 
 type StateListener = (state: RealtimeConnectionState) => void;
 
 class SynplanRealtimeManager {
-  private socket: WebSocket | null = null;
+  private supabase: SupabaseClient | null = null;
+  private activeChannels: Map<string, RealtimeChannel> = new Map();
   private connectionState: RealtimeConnectionState = "DISCONNECTED";
   private stateListeners: Set<StateListener> = new Set();
   private reconnectListeners: Set<() => void> = new Set();
-  
+
   // Multiplexed channel subscriptions: topic -> Set of handlers
   private channelHandlers: Map<string, Set<RealtimeWildcardHandler>> = new Map();
   // Typed event listeners: `${topic}:${eventType}` -> Set of handlers
   private eventHandlers: Map<string, Set<RealtimeEventHandler<any>>> = new Map();
 
-  // Deduplication cache: eventId -> timestamp
+  // Bounded LRU Deduplication Cache: eventId -> timestamp (500 items, 60s TTL)
   private processedEventIds: Map<string, number> = new Map();
+  private readonly MAX_EVENT_CACHE = 500;
+  private readonly EVENT_TTL_MS = 60000;
 
-  // Heartbeat & reconnect timers
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private baseReconnectDelay = 1000;
-
-  // Local Cross-Tab Broadcast Channel (guarantees multi-tab sync even when offline)
+  // Local Cross-Tab Broadcast Channel (guarantees same-browser multi-tab sync)
   private broadcastChannel: BroadcastChannel | null = null;
   private tabId: string = Math.random().toString(36).substring(2, 9);
 
   // Configuration
-  private supabaseUrl: string = "";
-  private supabaseAnonKey: string = "";
   private isConfigured: boolean = false;
   private isDev: boolean = process.env.NODE_ENV === "development";
 
   constructor() {
     if (typeof window !== "undefined") {
-      this.supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-      this.supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-      this.isConfigured = Boolean(this.supabaseUrl && this.supabaseAnonKey);
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+      this.isConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-      // Initialize local cross-tab communication
+      if (this.isConfigured) {
+        try {
+          this.supabase = createClient(supabaseUrl, supabaseAnonKey, {
+            auth: {
+              persistSession: false,
+              autoRefreshToken: false,
+            },
+          });
+        } catch (e) {
+          if (this.isDev) console.warn("[Realtime] Supabase client init fallback:", e);
+        }
+      }
+
+      // Initialize local cross-tab communication bus
       if ("BroadcastChannel" in window) {
         try {
           this.broadcastChannel = new BroadcastChannel("synplan_realtime_local_bus");
@@ -74,28 +81,47 @@ class SynplanRealtimeManager {
     }
   }
 
-  // --- Deduplication Helper ---
+  // --- Deduplication & LRU Cache Helper ---
 
-  private isDuplicateEvent(eventId: string): boolean {
+  public isDuplicateEvent(eventId: string): boolean {
     if (!eventId) return false;
     const now = Date.now();
+
+    // Auto-prune expired items
     if (this.processedEventIds.has(eventId)) {
-      return true;
+      const recordedAt = this.processedEventIds.get(eventId)!;
+      if (now - recordedAt <= this.EVENT_TTL_MS) {
+        return true;
+      }
     }
+
     this.processedEventIds.set(eventId, now);
 
-    // Evict old entries (> 30s) if cache exceeds 200 items
-    if (this.processedEventIds.size > 200) {
+    // Evict oldest entries if cache exceeds maximum bound
+    if (this.processedEventIds.size > this.MAX_EVENT_CACHE) {
       for (const [id, ts] of this.processedEventIds.entries()) {
-        if (now - ts > 30000) {
+        if (now - ts > this.EVENT_TTL_MS || this.processedEventIds.size > this.MAX_EVENT_CACHE) {
           this.processedEventIds.delete(id);
         }
       }
     }
+
     return false;
   }
 
-  // --- Connection State Management ---
+  // --- Realtime Authorization Token ---
+
+  public setAuthToken(token: string) {
+    if (this.supabase && token) {
+      try {
+        this.supabase.realtime.setAuth(token);
+      } catch (err) {
+        if (this.isDev) console.warn("[Realtime] Failed to set realtime auth token:", err);
+      }
+    }
+  }
+
+  // --- State & Lifecycle ---
 
   public getState(): RealtimeConnectionState {
     return this.connectionState;
@@ -114,10 +140,13 @@ class SynplanRealtimeManager {
 
   private setState(newState: RealtimeConnectionState) {
     if (this.connectionState !== newState) {
+      const wasReconnecting = this.connectionState === "RECONNECTING" || this.connectionState === "DISCONNECTED";
       this.connectionState = newState;
+
       if (this.isDev) {
-        console.log(`[Realtime] State changed -> ${newState}`);
+        console.log(`[Realtime] Connection state -> ${newState}`);
       }
+
       this.stateListeners.forEach((fn) => {
         try {
           fn(newState);
@@ -125,204 +154,70 @@ class SynplanRealtimeManager {
           console.error("[Realtime] Error in state listener:", e);
         }
       });
+
+      if (newState === "CONNECTED" && wasReconnecting) {
+        this.reconnectListeners.forEach((fn) => {
+          try {
+            fn();
+          } catch (err) {
+            console.error("[Realtime] Error in reconnect catch-up handler:", err);
+          }
+        });
+      }
     }
   }
-
-  // --- Lifecycle: Connect / Disconnect ---
 
   public connect() {
     if (typeof window === "undefined") return;
 
-    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-
-    if (!this.isConfigured) {
-      // Graceful fallback: If Supabase keys are not set, remain in DISCONNECTED or local mode
+    if (!this.isConfigured || !this.supabase) {
       if (this.isDev) {
-        console.info(
-          "[Realtime] NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY not set. Running in local multi-tab sync mode."
-        );
+        console.info("[Realtime] Running in local multi-tab broadcast mode (Supabase keys unconfigured).");
       }
       this.setState("CONNECTED");
       return;
     }
 
-    this.setState(this.reconnectAttempts > 0 ? "RECONNECTING" : "CONNECTING");
-
-    try {
-      // Build Supabase Realtime WebSocket URL
-      const cleanUrl = this.supabaseUrl.replace(/^http/, "ws");
-      const wsUrl = `${cleanUrl}/realtime/v1/websocket?apikey=${encodeURIComponent(
-        this.supabaseAnonKey
-      )}&vsn=1.0.0`;
-
-      // Connection timeout handler (8000ms)
-      if (this.connectionTimeoutTimer) clearTimeout(this.connectionTimeoutTimer);
-      this.connectionTimeoutTimer = setTimeout(() => {
-        if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
-          if (this.isDev) console.warn("[Realtime] Connection timeout reached (8s). Aborting and scheduling retry.");
-          try {
-            this.socket.close();
-          } catch (e) {}
-          this.socket = null;
-          this.setState("ERROR");
-          this.scheduleReconnect();
-        }
-      }, 8000);
-
-      this.socket = new WebSocket(wsUrl);
-
-      this.socket.onopen = () => {
-        if (this.connectionTimeoutTimer) {
-          clearTimeout(this.connectionTimeoutTimer);
-          this.connectionTimeoutTimer = null;
-        }
-        const wasReconnecting = this.reconnectAttempts > 0 || this.connectionState === "RECONNECTING";
-        this.reconnectAttempts = 0;
-        this.setState("CONNECTED");
-        this.startHeartbeat();
-        this.resubscribeAllChannels();
-
-        if (wasReconnecting) {
-          if (this.isDev) console.log("[Realtime] Reconnection established -> Triggering state catch-up");
-          this.reconnectListeners.forEach((fn) => {
-            try {
-              fn();
-            } catch (err) {
-              console.error("[Realtime] Error in reconnect catch-up listener:", err);
-            }
-          });
-        }
-      };
-
-      this.socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.handleIncomingSocketMessage(data);
-        } catch (err) {
-          if (this.isDev) console.warn("[Realtime] Failed to parse socket message:", err);
-        }
-      };
-
-      this.socket.onerror = (err) => {
-        if (this.isDev) console.warn("[Realtime] WebSocket error:", err);
-        this.setState("ERROR");
-      };
-
-      this.socket.onclose = (ev) => {
-        if (this.connectionTimeoutTimer) {
-          clearTimeout(this.connectionTimeoutTimer);
-          this.connectionTimeoutTimer = null;
-        }
-        this.stopHeartbeat();
-        this.socket = null;
-        if (this.connectionState !== "DISCONNECTED") {
-          this.scheduleReconnect();
-        }
-      };
-    } catch (err) {
-      if (this.isDev) console.warn("[Realtime] Connection initiation error:", err);
-      this.setState("ERROR");
-      this.scheduleReconnect();
-    }
+    this.setState("CONNECTING");
+    // Ensure all active channels are subscribed
+    this.resubscribeAllChannels();
   }
 
   public disconnect() {
-    this.stopHeartbeat();
-    if (this.connectionTimeoutTimer) {
-      clearTimeout(this.connectionTimeoutTimer);
-      this.connectionTimeoutTimer = null;
-    }
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    this.reconnectAttempts = 0;
-
-    if (this.socket) {
-      try {
-        this.socket.close();
-      } catch (e) {
-        // ignore
+    if (this.supabase) {
+      for (const [name, channel] of this.activeChannels.entries()) {
+        try {
+          this.supabase.removeChannel(channel);
+        } catch (e) {}
       }
-      this.socket = null;
+      this.activeChannels.clear();
     }
     this.setState("DISCONNECTED");
   }
 
-  private scheduleReconnect() {
-    if (this.reconnectTimer) return;
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      if (this.isDev) console.warn("[Realtime] Max reconnect attempts reached. Remaining in local multi-tab mode.");
-      this.setState("DISCONNECTED");
-      return;
+  // --- Channel Subscriptions ---
+
+  public subscribe(channelName: string, onEvent: RealtimeWildcardHandler): RealtimeSubscription {
+    if (!this.channelHandlers.has(channelName)) {
+      this.channelHandlers.set(channelName, new Set());
+      this.joinSupabaseChannel(channelName);
     }
 
-    this.setState("RECONNECTING");
-    this.reconnectAttempts++;
-    const jitter = Math.floor(Math.random() * 400);
-    const delay = Math.min(this.baseReconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1) + jitter, 10000);
+    this.channelHandlers.get(channelName)!.add(onEvent);
 
-    if (this.isDev) console.log(`[Realtime] Reconnecting in ${delay}ms (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.connect();
-    }, delay);
-  }
-
-  private startHeartbeat() {
-    this.stopHeartbeat();
-    this.heartbeatTimer = setInterval(() => {
-      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-        try {
-          this.socket.send(
-            JSON.stringify({
-              topic: "phoenix",
-              event: "heartbeat",
-              payload: {},
-              ref: Date.now().toString(),
-            })
-          );
-        } catch (e) {
-          // ignore
-        }
-      }
-    }, 25000);
-  }
-
-  private stopHeartbeat() {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-  }
-
-  // --- Channel Joining & Subscriptions ---
-
-  public subscribe(channel: string, onEvent: RealtimeWildcardHandler): RealtimeSubscription {
-    if (!this.channelHandlers.has(channel)) {
-      this.channelHandlers.set(channel, new Set());
-      this.joinChannelOnServer(channel);
-    }
-
-    this.channelHandlers.get(channel)!.add(onEvent);
-
-    // Auto-connect if not connected
     if (this.connectionState === "DISCONNECTED") {
       this.connect();
     }
 
     return {
-      channel,
+      channel: channelName,
       unsubscribe: () => {
-        const handlers = this.channelHandlers.get(channel);
+        const handlers = this.channelHandlers.get(channelName);
         if (handlers) {
           handlers.delete(onEvent);
           if (handlers.size === 0) {
-            this.channelHandlers.delete(channel);
-            this.leaveChannelOnServer(channel);
+            this.channelHandlers.delete(channelName);
+            this.leaveSupabaseChannel(channelName);
           }
         }
       },
@@ -330,27 +225,23 @@ class SynplanRealtimeManager {
   }
 
   public subscribeEvent<T extends RealtimeEventType>(
-    channel: string,
+    channelName: string,
     eventType: T,
     handler: RealtimeEventHandler<T>
   ): RealtimeSubscription {
-    const key = `${channel}:${eventType}`;
+    const key = `${channelName}:${eventType}`;
     if (!this.eventHandlers.has(key)) {
       this.eventHandlers.set(key, new Set());
     }
     this.eventHandlers.get(key)!.add(handler);
 
-    // Ensure channel itself is subscribed
-    const baseSub = this.subscribe(channel, (ev) => {
-      if (ev.type === eventType) {
-        handler(ev as RealtimeEvent<T>);
-      }
-    });
+    if (channelName !== "*") {
+      this.joinSupabaseChannel(channelName);
+    }
 
     return {
-      channel,
+      channel: channelName,
       unsubscribe: () => {
-        baseSub.unsubscribe();
         const handlers = this.eventHandlers.get(key);
         if (handlers) {
           handlers.delete(handler);
@@ -358,59 +249,82 @@ class SynplanRealtimeManager {
             this.eventHandlers.delete(key);
           }
         }
+        const hasChannelHandlers = (this.channelHandlers.get(channelName)?.size ?? 0) > 0;
+        const hasEventHandlers = Array.from(this.eventHandlers.keys()).some(
+          (k) => k.startsWith(`${channelName}:`) && (this.eventHandlers.get(k)?.size ?? 0) > 0
+        );
+        if (!hasChannelHandlers && !hasEventHandlers && channelName !== "*") {
+          this.leaveSupabaseChannel(channelName);
+        }
       },
     };
   }
 
-  private joinChannelOnServer(channel: string) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      const joinMsg = {
-        topic: `realtime:${channel}`,
-        event: "phx_join",
-        payload: {
-          config: {
-            broadcast: { ack: false, self: false },
-            postgres_changes: [],
-          },
-        },
-        ref: Date.now().toString(),
-      };
-      this.socket.send(JSON.stringify(joinMsg));
-      if (this.isDev) console.log(`[Realtime] Joined channel topic: realtime:${channel}`);
-    }
+  private joinSupabaseChannel(channelName: string) {
+    if (!this.supabase) return;
+
+    if (this.activeChannels.has(channelName)) return;
+
+    const channel = this.supabase.channel(channelName, {
+      config: {
+        broadcast: { ack: false, self: false },
+      },
+    });
+
+    channel
+      .on("broadcast", { event: "*" }, (message: any) => {
+        if (message && message.payload) {
+          const event = message.payload as RealtimeEvent;
+          this.dispatchToLocalListeners(channelName, event);
+        }
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          this.setState("CONNECTED");
+          if (this.isDev) console.log(`[Realtime] Subscribed to Supabase channel: ${channelName}`);
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          this.setState("ERROR");
+          if (this.isDev) console.warn(`[Realtime] Channel status [${channelName}]: ${status}`);
+        } else if (status === "CLOSED") {
+          if (this.connectionState !== "DISCONNECTED") {
+            this.setState("RECONNECTING");
+          }
+        }
+      });
+
+    this.activeChannels.set(channelName, channel);
   }
 
-  private leaveChannelOnServer(channel: string) {
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      const leaveMsg = {
-        topic: `realtime:${channel}`,
-        event: "phx_leave",
-        payload: {},
-        ref: Date.now().toString(),
-      };
-      this.socket.send(JSON.stringify(leaveMsg));
-      if (this.isDev) console.log(`[Realtime] Left channel topic: realtime:${channel}`);
+  private leaveSupabaseChannel(channelName: string) {
+    if (!this.supabase) return;
+    const channel = this.activeChannels.get(channelName);
+    if (channel) {
+      this.supabase.removeChannel(channel);
+      this.activeChannels.delete(channelName);
+      if (this.isDev) console.log(`[Realtime] Left Supabase channel: ${channelName}`);
     }
   }
 
   private resubscribeAllChannels() {
-    for (const channel of this.channelHandlers.keys()) {
-      this.joinChannelOnServer(channel);
+    for (const channelName of this.channelHandlers.keys()) {
+      this.joinSupabaseChannel(channelName);
     }
   }
 
-  // --- Broadcast & Event Ingestion ---
+  // --- Broadcast & Ingestion ---
 
   public broadcast<T extends RealtimeEventType>(
-    channel: string,
+    channelName: string,
     type: T,
     payload: any,
     metadata?: { workspaceId?: string; projectId?: string; taskId?: string; actorId?: string }
   ) {
+    const uniqueId = `evt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const event: RealtimeEvent<T> = {
-      id: `rt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: uniqueId,
+      eventId: uniqueId,
       type,
-      workspaceId: metadata?.workspaceId || channel.replace(/^workspace:/, ""),
+      workspaceId: metadata?.workspaceId || channelName.replace(/^workspace:/, ""),
       projectId: metadata?.projectId,
       taskId: metadata?.taskId,
       actorId: metadata?.actorId,
@@ -418,85 +332,49 @@ class SynplanRealtimeManager {
       payload,
     };
 
-    // 1. Dispatch locally in this browser tab
-    this.dispatchToLocalListeners(channel, event);
+    // 1. Dispatch locally in current browser tab
+    this.dispatchToLocalListeners(channelName, event);
 
-    // 2. Broadcast to other browser tabs via BroadcastChannel
+    // 2. Broadcast to other tabs on the same browser
     if (this.broadcastChannel) {
       try {
         this.broadcastChannel.postMessage({
-          channel,
+          channel: channelName,
           event,
           senderTabId: this.tabId,
         });
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
     }
 
-    // 3. Broadcast to remote WebSocket server if connected
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      try {
-        const msg = {
-          topic: `realtime:${channel}`,
-          event: "broadcast",
-          payload: {
-            type: "broadcast",
-            event: type,
-            payload: event,
-          },
-          ref: Date.now().toString(),
-        };
-        this.socket.send(JSON.stringify(msg));
-      } catch (e) {
-        if (this.isDev) console.warn("[Realtime] Failed to send WebSocket broadcast:", e);
-      }
+    // 3. Broadcast to Supabase Realtime channel
+    const channel = this.activeChannels.get(channelName);
+    if (channel) {
+      channel.send({
+        type: "broadcast",
+        event: type,
+        payload: event,
+      });
     }
   }
 
-  private handleIncomingSocketMessage(data: any) {
-    if (!data || !data.topic) return;
-
-    // Phoenix / Supabase Realtime format: topic = "realtime:workspace:xxx"
-    const channel = data.topic.replace(/^realtime:/, "");
-
-    if (data.event === "broadcast" && data.payload?.payload) {
-      const event = data.payload.payload as RealtimeEvent;
-      this.dispatchToLocalListeners(channel, event);
-    } else if (data.event === "postgres_changes" && data.payload?.data) {
-      // Postgres CDC fallback format
-      const cdc = data.payload.data;
-      const eventType = (cdc.type ? `DB_${cdc.type}` : "DB_CHANGE") as RealtimeEventType;
-      const event: RealtimeEvent = {
-        id: `cdc_${Date.now()}`,
-        type: eventType,
-        workspaceId: cdc.record?.workspace_id || cdc.record?.workspaceId || "",
-        projectId: cdc.record?.project_id || cdc.record?.projectId,
-        taskId: cdc.record?.id,
-        timestamp: new Date().toISOString(),
-        payload: cdc.record,
-      };
-      this.dispatchToLocalListeners(channel, event);
-    }
-  }
-
-  private dispatchToLocalListeners(channel: string, event: RealtimeEvent) {
+  public dispatchToLocalListeners(channelName: string, event: RealtimeEvent) {
     if (!event || !event.type) return;
 
     // Deduplication check
-    if (event.id && this.isDuplicateEvent(event.id)) {
+    const eventId = event.eventId || event.id;
+    if (eventId && this.isDuplicateEvent(eventId)) {
       if (this.isDev) {
-        console.log(`[Realtime] Duplicate event suppressed: ${event.id} (${event.type})`);
+        console.log(`[Realtime] Duplicate event suppressed: ${eventId} (${event.type})`);
       }
       return;
     }
 
     if (this.isDev) {
-      console.log(`[Realtime] Received event on [${channel}]:`, event.type, event.payload);
+      console.log(`[Realtime] Dispatched event on [${channelName}]:`, event.type, event.payload);
     }
 
-    // 1. Direct channel wildcard handlers
-    const handlers = this.channelHandlers.get(channel);
+    // 1. Channel wildcard handlers
+    const handlers = this.channelHandlers.get(channelName);
     if (handlers) {
       handlers.forEach((fn) => {
         try {
@@ -507,7 +385,7 @@ class SynplanRealtimeManager {
       });
     }
 
-    // 2. Global wildcard channel handlers ("*")
+    // 2. Global wildcard handlers ("*")
     const globalHandlers = this.channelHandlers.get("*");
     if (globalHandlers) {
       globalHandlers.forEach((fn) => {
@@ -519,8 +397,8 @@ class SynplanRealtimeManager {
       });
     }
 
-    // 3. Specific event handlers (e.g. "workspace:ws_123:TASK_CREATED")
-    const eventKey = `${channel}:${event.type}`;
+    // 3. Typed event handlers
+    const eventKey = `${channelName}:${event.type}`;
     const specificHandlers = this.eventHandlers.get(eventKey);
     if (specificHandlers) {
       specificHandlers.forEach((fn) => {
@@ -532,7 +410,7 @@ class SynplanRealtimeManager {
       });
     }
 
-    // 4. Global typed event handlers (e.g. "*:TASK_CREATED")
+    // 4. Global typed handlers
     const globalEventKey = `*:${event.type}`;
     const globalSpecificHandlers = this.eventHandlers.get(globalEventKey);
     if (globalSpecificHandlers) {

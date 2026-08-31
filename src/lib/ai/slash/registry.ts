@@ -456,7 +456,7 @@ export const SLASH_COMMAND_REGISTRY: SlashCommandNode[] = [
     description: "Rencanakan dan buat project baru dengan bantuan AI Project Creation",
     aliases: ["rencana", "project-plan"],
     category: "plan",
-    icon: "Sparkles",
+    icon: "Bot",
     argumentType: "text",
     argumentPlaceholder: "Deskripsikan project Anda (e.g. Website Cafe ABC deadline 1 Okt)",
     requiredPermission: "projects.create",

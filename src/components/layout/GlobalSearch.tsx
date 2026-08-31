@@ -186,7 +186,7 @@ export function GlobalSearch() {
                             <div className="flex items-center gap-2.5 min-w-0">
                               <span
                                 className="h-2.5 w-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: p.color || "#6366F1" }}
+                                style={{ backgroundColor: p.color || "#0284C7" }}
                               />
                               <div className="min-w-0">
                                 <p className="text-xs font-semibold text-foreground group-hover:text-primary group-focus:text-primary transition-colors truncate">

@@ -1,10 +1,19 @@
 import { create } from "zustand";
 import { Workspace, Project, WorkspaceMember } from "@/types";
 
+export interface AuthenticatedUser {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string | null;
+  role?: string;
+}
+
 interface WorkspaceState {
   activeWorkspace: Workspace | null;
   workspaces: Workspace[];
   isWorkspaceValidated: boolean;
+  currentUser: AuthenticatedUser | null;
   activeProject: Project | null;
   projects: Project[];
   members: WorkspaceMember[];
@@ -15,6 +24,7 @@ interface WorkspaceState {
   setActiveWorkspace: (workspace: Workspace) => void;
   setWorkspaceValidated: (validated: boolean) => void;
   setWorkspaces: (workspaces: Workspace[]) => void;
+  setCurrentUser: (user: AuthenticatedUser | null) => void;
   setActiveProject: (project: Project | null) => void;
   setProjects: (projects: Project[]) => void;
   addProject: (project: Project) => void;
@@ -24,6 +34,9 @@ interface WorkspaceState {
   addMember: (member: WorkspaceMember) => void;
   updateMember: (id: string, updates: Partial<WorkspaceMember>) => void;
   removeMember: (id: string) => void;
+  applyBatchMutation: (batch: {
+    projectsUpdated?: Array<Partial<Project> & { id: string }>;
+  }) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
 }
@@ -45,6 +58,7 @@ const getInitialWorkspace = (): Workspace | null => {
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeWorkspace: getInitialWorkspace(),
   isWorkspaceValidated: false,
+  currentUser: null,
   workspaces: [],
   activeProject: null,
   projects: [],
@@ -68,6 +82,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   },
   setWorkspaceValidated: (validated) => set({ isWorkspaceValidated: validated }),
   setWorkspaces: (workspaces) => set({ workspaces }),
+  setCurrentUser: (currentUser) => set({ currentUser }),
   setActiveProject: (project) => set({ activeProject: project }),
   setProjects: (projects) => set({ projects }),
   addProject: (project) =>
@@ -114,6 +129,26 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set((state) => ({
       members: state.members.filter((m) => m.id !== id),
     })),
+  applyBatchMutation: (batch) =>
+    set((state) => {
+      let nextProjects = [...state.projects];
+      if (batch.projectsUpdated && batch.projectsUpdated.length > 0) {
+        const updateMap = new Map(batch.projectsUpdated.map((u) => [u.id, u]));
+        nextProjects = nextProjects.map((p) => {
+          const up = updateMap.get(p.id);
+          if (!up) return p;
+          if (up.updatedAt && p.updatedAt) {
+            const incomingTime = new Date(up.updatedAt).getTime();
+            const existingTime = new Date(p.updatedAt).getTime();
+            if (!isNaN(incomingTime) && !isNaN(existingTime) && incomingTime < existingTime) {
+              return p;
+            }
+          }
+          return { ...p, ...up };
+        });
+      }
+      return { projects: nextProjects };
+    }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
 }));

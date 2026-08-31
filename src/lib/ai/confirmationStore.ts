@@ -26,6 +26,34 @@ const pendingConfirmations = new Map<string, PendingConfirmationRecord>();
 const userPendingIndex = new Map<string, string>();
 
 const CONFIRMATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+export const MAX_PENDING_CONFIRMATIONS = 300;
+
+export function prunePendingConfirmations(): void {
+  const now = Date.now();
+  for (const [token, rec] of pendingConfirmations.entries()) {
+    if (rec.status !== "PENDING" || now > new Date(rec.expiresAt).getTime()) {
+      pendingConfirmations.delete(token);
+      const userKey = `${rec.userId}:${rec.workspaceId}`;
+      if (userPendingIndex.get(userKey) === token) {
+        userPendingIndex.delete(userKey);
+      }
+    }
+  }
+
+  if (pendingConfirmations.size > MAX_PENDING_CONFIRMATIONS) {
+    const keysToDelete = Array.from(pendingConfirmations.keys()).slice(
+      0,
+      pendingConfirmations.size - MAX_PENDING_CONFIRMATIONS
+    );
+    for (const key of keysToDelete) {
+      const rec = pendingConfirmations.get(key);
+      if (rec) {
+        userPendingIndex.delete(`${rec.userId}:${rec.workspaceId}`);
+      }
+      pendingConfirmations.delete(key);
+    }
+  }
+}
 
 /**
  * Generates a deterministic SHA-256 cryptographic fingerprint of a plan.
@@ -128,6 +156,7 @@ export function registerPendingConfirmation(
   context: AiExecutionContext,
   snapshots?: TargetEntitySnapshot[]
 ): PendingConfirmationRecord {
+  prunePendingConfirmations();
   const userKey = `${context.userId}:${context.workspaceId}`;
 
   // Invalidate any previous pending confirmation for this user in this workspace

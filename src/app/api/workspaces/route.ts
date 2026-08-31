@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateSessionToken, SESSION_COOKIE_NAME } from "@/lib/auth/session";
+import { applyRateLimit, apiRateLimiter, getClientIp } from "@/lib/rateLimit";
+import { validateRequestBody } from "@/lib/validation/apiValidator";
+import { CreateWorkspaceSchema } from "@/lib/validation/schemas";
+import { createApiErrorResponse } from "@/lib/apiErrors";
 
 /**
- * Resolves the authenticated user ID from session cookie or header
+ * Resolves the authenticated user ID strictly from session cookie or Bearer header
  */
-async function resolveAuthUserId(req: NextRequest): Promise<string | null> {
+async function resolveAuthUserId(req: NextRequest): Promise<{ userId: string; ipAddress: string } | null> {
+  const ipAddress = getClientIp(req);
+
   // 1. Session token from cookie, Authorization header, or x-synplan-session-token
   let token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
   if (!token) {
@@ -21,24 +27,20 @@ async function resolveAuthUserId(req: NextRequest): Promise<string | null> {
   if (token) {
     const sessionRes = await validateSessionToken(token);
     if (sessionRes) {
-      return sessionRes.user.id;
+      return { userId: sessionRes.user.id, ipAddress };
     }
   }
 
-  // 2. Fallback: x-synplan-user-id header (for automated tests / dev)
+  // 2. Gated Test Mode Header Authentication (Strictly disabled in non-test env)
+  const isTestEnv = process.env.NODE_ENV === "test" && process.env.ALLOW_TEST_HEADER_AUTH === "true";
   const headerUserId = req.headers.get("x-synplan-user-id");
-  if (headerUserId) {
+
+  if (isTestEnv && headerUserId) {
     const user = await prisma.user.findUnique({
       where: { id: headerUserId },
       select: { id: true },
     });
-    if (user) return user.id;
-  }
-
-  // 3. Fallback: default user in development mode
-  if (process.env.NODE_ENV !== "production") {
-    const defaultUser = await prisma.user.findFirst({ select: { id: true } });
-    if (defaultUser) return defaultUser.id;
+    if (user) return { userId: user.id, ipAddress };
   }
 
   return null;
@@ -47,13 +49,16 @@ async function resolveAuthUserId(req: NextRequest): Promise<string | null> {
 // GET /api/workspaces - Fetch workspaces scoped strictly to authenticated user
 export async function GET(req: NextRequest) {
   try {
-    const userId = await resolveAuthUserId(req);
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
 
-    if (!userId) {
+    const auth = await resolveAuthUserId(req);
+    if (!auth) {
       return NextResponse.json(
         {
           success: false,
-          error: "Unauthorized: Active user session required to list workspaces",
+          error: "Unauthorized",
+          message: "Active user session required to list workspaces",
         },
         { status: 401 }
       );
@@ -63,7 +68,7 @@ export async function GET(req: NextRequest) {
       where: {
         members: {
           some: {
-            userId,
+            userId: auth.userId,
           },
         },
       },
@@ -87,8 +92,8 @@ export async function GET(req: NextRequest) {
     });
 
     const mappedWorkspaces = workspaces.map((w) => {
-      const myMembership = w.members.find((m) => m.userId === userId);
-      const role = myMembership?.role || (w.ownerId === userId ? "OWNER" : "MEMBER");
+      const myMembership = w.members.find((m) => m.userId === auth.userId);
+      const role = myMembership?.role || (w.ownerId === auth.userId ? "OWNER" : "MEMBER");
       return {
         ...w,
         role,
@@ -98,32 +103,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: mappedWorkspaces,
-    });
+    }, { headers: rateLimit.rateLimitHeaders });
   } catch (error: any) {
-    console.error("GET /api/workspaces error:", error?.message);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error?.message || "Failed to fetch workspaces",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to fetch workspaces");
   }
 }
 
 // POST /api/workspaces - Create a new workspace for authenticated user
 export async function POST(req: NextRequest) {
   try {
-    const authUserId = await resolveAuthUserId(req);
-    const body = await req.json();
-    const { name, slug, ownerId } = body;
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
 
-    if (!name || typeof name !== "string" || !name.trim()) {
+    const auth = await resolveAuthUserId(req);
+    if (!auth) {
       return NextResponse.json(
-        { success: false, error: "Workspace name is required" },
-        { status: 400 }
+        { success: false, error: "Unauthorized", message: "Active user session required to create workspace" },
+        { status: 401 }
       );
     }
+
+    const validation = await validateRequestBody(req, CreateWorkspaceSchema);
+    if (validation.errorResponse) return validation.errorResponse;
+
+    const { name, slug } = validation.data;
 
     const cleanSlug = (slug || name)
       .toLowerCase()
@@ -138,17 +141,8 @@ export async function POST(req: NextRequest) {
 
     if (existingSlug) {
       return NextResponse.json(
-        { success: false, error: "Workspace slug already exists. Please pick a unique slug." },
+        { success: false, error: "Conflict", message: "Workspace slug already exists. Please pick a unique slug." },
         { status: 409 }
-      );
-    }
-
-    // Default owner fallback to authenticated user
-    const effectiveOwnerId = authUserId || ownerId;
-    if (!effectiveOwnerId) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized: Active user session required to create workspace" },
-        { status: 401 }
       );
     }
 
@@ -156,19 +150,20 @@ export async function POST(req: NextRequest) {
       data: {
         name: name.trim(),
         slug: cleanSlug,
-        ownerId: effectiveOwnerId,
+        ownerId: auth.userId,
         members: {
           create: {
-            userId: effectiveOwnerId,
+            userId: auth.userId,
             role: "OWNER",
             workloadScore: 20,
           },
         },
         auditLogs: {
           create: {
-            actorId: effectiveOwnerId,
+            actorId: auth.userId,
             action: "WORKSPACE_CREATE",
             target: `Workspace "${name.trim()}" created`,
+            ipAddress: auth.ipAddress,
           },
         },
       },
@@ -184,17 +179,9 @@ export async function POST(req: NextRequest) {
         data: workspace,
         message: "Workspace created successfully",
       },
-      { status: 201 }
+      { status: 201, headers: rateLimit.rateLimitHeaders }
     );
   } catch (error: any) {
-    console.error("POST /api/workspaces error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to create workspace",
-        message: error?.message || "Internal server error",
-      },
-      { status: 500 }
-    );
+    return createApiErrorResponse(error, "Failed to create workspace");
   }
 }
