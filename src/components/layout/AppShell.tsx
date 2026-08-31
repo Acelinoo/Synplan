@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { TopHeader } from "./TopHeader";
 import { CommandPalette } from "@/components/common/CommandPalette";
@@ -9,6 +10,13 @@ import { AiAssistantDrawer } from "@/components/ai/AiAssistantDrawer";
 import { AiAssistantTrigger } from "@/components/ai/AiAssistantTrigger";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isAuthPage = pathname?.startsWith("/login");
+
+  if (isAuthPage) {
+    return <main className="min-h-screen w-screen overflow-x-hidden bg-background">{children}</main>;
+  }
+
   return (
     <RealtimeProvider>
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">

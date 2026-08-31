@@ -92,13 +92,18 @@ export function TopHeader() {
             setActiveWorkspace(null as any);
           }
         } else {
-          // Session expired or invalidated on server
+          // Session unauthenticated or invalidated on server
           if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+            const hadCookie = document.cookie.includes("synplan_session_token");
             try {
               document.cookie = "synplan_session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
               localStorage.removeItem("synplan_active_ws");
             } catch (e) {}
-            router.push("/login?error=session_expired");
+            if (hadCookie) {
+              router.push("/login?error=session_expired");
+            } else {
+              router.push("/login");
+            }
           }
         }
       } catch (err) {
