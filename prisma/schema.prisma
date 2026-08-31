@@ -134,7 +134,7 @@ model Project {
   progress       Int             @default(0) // 0-100%
   status         ProjectStatus   @default(ACTIVE)
   deadline       DateTime?
-  color          String          @default("#6366F1")
+  color          String          @default("#0284C7")
   totalTasks     Int             @default(0)
   completedTasks Int             @default(0)
   createdAt      DateTime        @default(now())

@@ -379,6 +379,8 @@ export function validateAiPlan(plan: AiPlan, context: AiExecutionContext): Valid
         actionStatus = "NEEDS_CLARIFICATION";
         globalClarifications.push(...regValidation.clarifications);
       }
+    } else {
+      actionErrors.push(`Tindakan AI "${action.type}" tidak didukung oleh sistem.`);
     }
 
     // Entity & Candidate Normalization per Action Type
