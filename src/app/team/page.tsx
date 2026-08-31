@@ -25,7 +25,7 @@ export default function TeamPage() {
   const { members, setMembers, addMember, updateMember, removeMember, activeWorkspace } = useWorkspaceStore();
   const { addToast } = useUiStore();
   const { can } = usePermissions();
-  const { onEvent } = useRealtime();
+  const { onEvent, onReconnect } = useRealtime();
   const [isLoading, setIsLoading] = React.useState(members.length === 0);
   const [isInviteModalOpen, setIsInviteModalOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -33,8 +33,12 @@ export default function TeamPage() {
   const [workloadFilter, setWorkloadFilter] = React.useState<"all" | "optimal" | "high" | "overloaded">("all");
 
   const loadMembers = React.useCallback(async () => {
+    const activeWsId = activeWorkspace?.id;
     try {
-      const res = await apiClient.getTeamMembers();
+      const res = await apiClient.getTeamMembers({ workspaceId: activeWsId });
+      if (useWorkspaceStore.getState().activeWorkspace?.id !== activeWsId && activeWsId) {
+        return;
+      }
       if (res.success && Array.isArray(res.data)) {
         const mappedMembers: WorkspaceMember[] = res.data.map((m: any) => ({
           id: m.id,
@@ -55,7 +59,7 @@ export default function TeamPage() {
     } catch (err) {
       console.warn("Failed to load team members from API:", err);
     }
-  }, [setMembers]);
+  }, [activeWorkspace?.id, setMembers]);
 
   // --- Realtime Team Live Synchronization ---
   React.useEffect(() => {
@@ -97,6 +101,15 @@ export default function TeamPage() {
     setIsLoading(true);
     loadMembers().finally(() => setIsLoading(false));
   }, [loadMembers]);
+
+  // Realtime reconnect catch-up resync
+  React.useEffect(() => {
+    const unsub = onReconnect(() => {
+      apiClient.invalidate("/api/team/members");
+      loadMembers();
+    });
+    return unsub;
+  }, [onReconnect, loadMembers]);
 
   const handleInvite = async (newMemberData: { name: string; email: string; role: MemberRole }) => {
     try {

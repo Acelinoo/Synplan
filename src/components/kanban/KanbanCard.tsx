@@ -50,17 +50,21 @@ export function KanbanCard({ task, onEdit, onSelect }: KanbanCardProps) {
   const canMoveLeft = currentIdx > 0;
   const canMoveRight = currentIdx >= 0 && currentIdx < statusOrder.length - 1;
 
-  const handleMove = (direction: "left" | "right", e: React.MouseEvent) => {
+  const handleMove = async (direction: "left" | "right", e: React.MouseEvent) => {
     e.stopPropagation();
     const newIdx = direction === "left" ? currentIdx - 1 : currentIdx + 1;
     if (newIdx >= 0 && newIdx < statusOrder.length) {
+      const prevStatus = task.status;
+      const prevCompletedAt = task.completedAt;
       const nextStatus = statusOrder[newIdx];
+
+      // 1. Optimistic local update
       moveTaskStatus(task.id, nextStatus);
 
-      // Async mutation with evaluator feedback
-      apiClient.updateTaskStatus(task.id, nextStatus).then((res) => {
-        if (res.success && res.evaluator) {
-          if (nextStatus === "done") {
+      try {
+        const res = await apiClient.updateTaskStatus(task.id, nextStatus);
+        if (res.success) {
+          if (nextStatus === "done" && res.evaluator) {
             addToast({
               title: "🎉 Task Completed!",
               description: `"${task.title}" is marked as done. (${res.evaluator.timingSummary})`,
@@ -77,8 +81,24 @@ export function KanbanCard({ task, onEdit, onSelect }: KanbanCardProps) {
               }, 600);
             }
           }
+        } else {
+          // Rollback to previous status on non-success response
+          moveTaskStatus(task.id, prevStatus, prevCompletedAt);
+          addToast({
+            title: "Gagal Mengubah Status",
+            description: res.message || res.error || "Gagal memperbarui status task di server.",
+            variant: "danger",
+          });
         }
-      });
+      } catch (err: any) {
+        // Rollback on network/fetch exception
+        moveTaskStatus(task.id, prevStatus, prevCompletedAt);
+        addToast({
+          title: "Koneksi Bermasalah",
+          description: err?.message || "Gagal terhubung ke server untuk memperbarui status.",
+          variant: "danger",
+        });
+      }
     }
   };
 

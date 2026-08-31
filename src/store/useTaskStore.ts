@@ -29,6 +29,7 @@ interface TaskState {
   setAssigneeFilter: (assigneeId: string | "all") => void;
   resetFilters: () => void;
   clearRecentCompleted: () => void;
+  resetWorkspaceTasks: () => void;
   applyBatchMutation: (batch: {
     tasksCreated?: Task[];
     tasksUpdated?: Array<Partial<Task> & { id: string }>;
@@ -111,6 +112,15 @@ export const useTaskStore = create<TaskState>((set) => ({
     set((state) => ({ filters: { ...state.filters, assigneeFilter: assigneeId } })),
   resetFilters: () => set({ filters: defaultFilters }),
   clearRecentCompleted: () => set({ recentCompletedTaskId: null }),
+  resetWorkspaceTasks: () =>
+    set({
+      tasks: [],
+      selectedTaskId: null,
+      recentCompletedTaskId: null,
+      filters: defaultFilters,
+      isLoading: false,
+      error: null,
+    }),
   applyBatchMutation: (batch) =>
     set((state) => {
       let nextTasks = [...state.tasks];

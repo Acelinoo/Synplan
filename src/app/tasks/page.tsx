@@ -70,11 +70,16 @@ function TasksContent() {
     setPriorityFilter,
     resetFilters,
   } = useTaskStore();
-  const { projects } = useWorkspaceStore();
+  const { projects, activeWorkspace } = useWorkspaceStore();
   const { setCreateTaskModalOpen } = useUiStore();
-  const { onEvent } = useRealtime();
+  const { onEvent, onReconnect } = useRealtime();
 
   const [isLoading, setIsLoading] = React.useState(tasks.length === 0);
+  const [page, setPage] = React.useState(1);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [totalTasksCount, setTotalTasksCount] = React.useState(0);
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false);
+
   const urlProjectId = searchParams.get("projectId");
   const urlTaskId = searchParams.get("taskId");
   const urlCreate = searchParams.get("create");
@@ -208,13 +213,29 @@ function TasksContent() {
     }
   }, [urlProjectId]);
 
-  React.useEffect(() => {
-    async function loadTasks() {
-      setIsLoading(true);
+  const loadTasks = React.useCallback(
+    async (targetPage = 1, append = false) => {
+      const activeWsId = activeWorkspace?.id;
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setIsLoading(true);
+      }
+
       try {
-        const res = await apiClient.getTasks();
+        const res = await apiClient.getTasks({
+          workspaceId: activeWsId,
+          page: targetPage,
+          limit: 50,
+        });
+
+        // Guard against stale response if workspace switched in-flight
+        if (useWorkspaceStore.getState().activeWorkspace?.id !== activeWsId && activeWsId) {
+          return;
+        }
+
         if (res.success && Array.isArray(res.data)) {
-          const mapped = res.data.map((t: any) => ({
+          const mapped: Task[] = res.data.map((t: any) => ({
             id: t.id,
             workspaceId: t.workspaceId,
             projectId: t.projectId,
@@ -232,7 +253,20 @@ function TasksContent() {
             createdAt: t.createdAt,
             updatedAt: t.updatedAt,
           }));
-          setTasks(mapped);
+
+          if (append) {
+            const currentTasks = useTaskStore.getState().tasks;
+            const existingIds = new Set(currentTasks.map((t) => t.id));
+            const newItems = mapped.filter((t) => !existingIds.has(t.id));
+            setTasks([...currentTasks, ...newItems]);
+          } else {
+            setTasks(mapped);
+          }
+
+          const paginationData = (res as any).pagination;
+          setPage(targetPage);
+          setHasMore(Boolean(paginationData?.hasMore));
+          setTotalTasksCount(paginationData?.total ?? (append ? tasks.length + mapped.length : mapped.length));
 
           if (urlTaskId) {
             const found = mapped.find((t: any) => t.id === urlTaskId);
@@ -243,11 +277,26 @@ function TasksContent() {
         console.warn("Failed to load tasks from API:", err);
       } finally {
         setIsLoading(false);
+        setIsLoadingMore(false);
       }
-    }
-    loadTasks();
+    },
+    [activeWorkspace?.id, setTasks, urlTaskId, tasks.length]
+  );
+
+  // Initial load and workspace change reload
+  React.useEffect(() => {
+    loadTasks(1, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setTasks, urlTaskId]);
+  }, [activeWorkspace?.id, urlTaskId]);
+
+  // Realtime reconnect catch-up resynchronization
+  React.useEffect(() => {
+    const unsub = onReconnect(() => {
+      apiClient.invalidate("/api/tasks");
+      loadTasks(1, false);
+    });
+    return unsub;
+  }, [onReconnect, loadTasks]);
 
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch =
@@ -680,6 +729,30 @@ function TasksContent() {
           </div>
         </div>
         )
+      )}
+
+      {/* Pagination / Load More Footer */}
+      {hasMore && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs shadow-xs text-xs text-muted-foreground animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span>
+              Menampilkan <strong className="text-foreground font-semibold">{tasks.length}</strong> dari{" "}
+              <strong className="text-foreground font-semibold">{totalTasksCount}</strong> total task
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isLoadingMore}
+            onClick={() => loadTasks(page + 1, true)}
+            className="gap-2 text-xs h-8 px-4 font-medium hover:border-primary/50 cursor-pointer"
+          >
+            {isLoadingMore ? (
+              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            ) : null}
+            Muat Task Berikutnya ({totalTasksCount - tasks.length > 0 ? `${totalTasksCount - tasks.length} tersisa` : "Lebih Banyak"})
+          </Button>
+        </div>
       )}
 
       {/* Task Modal (Create / Edit) */}

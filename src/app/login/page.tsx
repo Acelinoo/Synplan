@@ -10,9 +10,21 @@ function LoginContent() {
   const errorParam = searchParams.get("error");
   const [loadingProvider, setLoadingProvider] = React.useState<"google" | "github" | null>(null);
 
+  // Clear stale session cookie on login page mount if error or expired param is present
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        document.cookie = "synplan_session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        localStorage.removeItem("synplan_active_ws");
+      } catch (e) {}
+    }
+  }, []);
+
   const getErrorMessage = (err: string | null) => {
     if (!err) return null;
     switch (err) {
+      case "session_expired":
+        return "Sesi login Anda telah berakhir. Silakan masuk kembali.";
       case "google_not_configured":
         return "Google OAuth belum dikonfigurasi. Harap isi GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET di file .env.";
       case "github_not_configured":

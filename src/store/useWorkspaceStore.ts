@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { Workspace, Project, WorkspaceMember } from "@/types";
+import { useTaskStore } from "./useTaskStore";
 
 export interface AuthenticatedUser {
   id: string;
@@ -78,7 +79,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         // ignore
       }
     }
-    set({ activeWorkspace: workspace, activeProject: null });
+    // Cleanly transition workspace state: reset workspace-scoped entity stores
+    useTaskStore.getState().resetWorkspaceTasks();
+    set({
+      activeWorkspace: workspace,
+      activeProject: null,
+      projects: [],
+      members: [],
+      isLoading: false,
+      error: null,
+    });
   },
   setWorkspaceValidated: (validated) => set({ isWorkspaceValidated: validated }),
   setWorkspaces: (workspaces) => set({ workspaces }),

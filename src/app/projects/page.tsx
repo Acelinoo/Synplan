@@ -33,9 +33,9 @@ function ProjectsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const createParam = searchParams.get("create");
-  const { projects, setProjects, addProject, updateProject, deleteProject, applyBatchMutation } = useWorkspaceStore();
+  const { projects, setProjects, addProject, updateProject, deleteProject, applyBatchMutation, activeWorkspace } = useWorkspaceStore();
   const { setCreateProjectModalOpen } = useUiStore();
-  const { onEvent } = useRealtime();
+  const { onEvent, onReconnect } = useRealtime();
 
   const [isLoading, setIsLoading] = React.useState(projects.length === 0);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -92,22 +92,36 @@ function ProjectsContent() {
     }
   }, [createParam, setCreateProjectModalOpen]);
 
-  React.useEffect(() => {
-    async function loadProjects() {
-      setIsLoading(true);
-      try {
-        const res = await apiClient.getProjects();
-        if (res.success && Array.isArray(res.data)) {
-          setProjects(res.data);
-        }
-      } catch (err) {
-        console.warn("Failed to load projects from API:", err);
-      } finally {
-        setIsLoading(false);
+  const loadProjects = React.useCallback(async () => {
+    const activeWsId = activeWorkspace?.id;
+    setIsLoading(true);
+    try {
+      const res = await apiClient.getProjects({ workspaceId: activeWsId });
+      if (useWorkspaceStore.getState().activeWorkspace?.id !== activeWsId && activeWsId) {
+        return;
       }
+      if (res.success && Array.isArray(res.data)) {
+        setProjects(res.data);
+      }
+    } catch (err) {
+      console.warn("Failed to load projects from API:", err);
+    } finally {
+      setIsLoading(false);
     }
+  }, [activeWorkspace?.id, setProjects]);
+
+  React.useEffect(() => {
     loadProjects();
-  }, [setProjects]);
+  }, [loadProjects]);
+
+  // Realtime reconnect catch-up resync
+  React.useEffect(() => {
+    const unsub = onReconnect(() => {
+      apiClient.invalidate("/api/projects");
+      loadProjects();
+    });
+    return unsub;
+  }, [onReconnect, loadProjects]);
 
   const filteredProjects = projects.filter((p) => {
     const matchesSearch =

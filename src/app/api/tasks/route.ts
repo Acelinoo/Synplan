@@ -212,9 +212,9 @@ export async function POST(req: NextRequest) {
       if (defaultPhase) validPhaseId = defaultPhase.id;
     }
 
-    // Validate assigneeId belongs to this workspace
+    // Validate assigneeId belongs strictly to this workspace
     let validAssigneeId: string | null = null;
-    if (assigneeId) {
+    if (assigneeId !== undefined && assigneeId !== null && assigneeId !== "") {
       const isMember = await prisma.workspaceMember.findUnique({
         where: {
           workspaceId_userId: {
@@ -224,7 +224,18 @@ export async function POST(req: NextRequest) {
         },
         select: { userId: true },
       });
-      if (isMember) validAssigneeId = isMember.userId;
+      if (!isMember) {
+        if (idempotencyKey) idempotency.release(idempotencyKey, targetWorkspaceId, auth.userId);
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Bad Request",
+            message: `Assignee '${assigneeId}' is not a valid member of this workspace`,
+          },
+          { status: 400 }
+        );
+      }
+      validAssigneeId = isMember.userId;
     }
 
     const task = await prisma.task.create({

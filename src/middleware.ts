@@ -73,8 +73,13 @@ export function middleware(request: NextRequest) {
   const isPublic = PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   const sessionToken = request.cookies.get("synplan_session_token")?.value;
 
-  // Case A: Authenticated user visiting /login -> Redirect to dashboard
-  if (pathname === "/login" && sessionToken) {
+  // Case A: Authenticated user visiting /login -> Redirect to dashboard unless force/expired/error is set
+  const isForceLogin =
+    request.nextUrl.searchParams.get("force") === "true" ||
+    request.nextUrl.searchParams.get("expired") === "true" ||
+    Boolean(request.nextUrl.searchParams.get("error"));
+
+  if (pathname === "/login" && sessionToken && !isForceLogin) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

@@ -57,7 +57,7 @@ export function TopHeader() {
     markAllAsRead,
   } = useNotificationStore();
 
-  const { onEvent } = useRealtime();
+  const { onEvent, onReconnect } = useRealtime();
   const { onlineUsers } = usePresence();
 
   const [isThemeMenuOpen, setIsThemeMenuOpen] = React.useState(false);
@@ -91,17 +91,25 @@ export function TopHeader() {
           } else {
             setActiveWorkspace(null as any);
           }
+        } else {
+          // Session expired or invalidated on server
+          if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+            try {
+              document.cookie = "synplan_session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+              localStorage.removeItem("synplan_active_ws");
+            } catch (e) {}
+            router.push("/login?error=session_expired");
+          }
         }
       } catch (err) {
         console.warn("Failed to load user session in TopHeader:", err);
       } finally {
         // Mark workspace as validated so dashboard widgets can start fetching.
-        // This must fire on both success and failure so widgets don't stay in loading forever.
         setWorkspaceValidated(true);
       }
     }
     loadUserSession();
-  }, [setActiveWorkspace, setWorkspaces, setWorkspaceValidated, setStoreCurrentUser]);
+  }, [setActiveWorkspace, setWorkspaces, setWorkspaceValidated, setStoreCurrentUser, router]);
 
   React.useEffect(() => {
     try {
@@ -112,20 +120,30 @@ export function TopHeader() {
     } catch (e) {}
   }, [setTheme]);
 
+  const loadNotifs = React.useCallback(async () => {
+    try {
+      const res = await apiClient.getNotifications();
+      if (res.success && Array.isArray(res.data)) {
+        setNotifications(res.data);
+      }
+    } catch (err) {
+      console.warn("Failed to load notifications from API:", err);
+    }
+  }, [setNotifications]);
+
   // Initial load of notifications
   React.useEffect(() => {
-    async function loadNotifs() {
-      try {
-        const res = await apiClient.getNotifications();
-        if (res.success && Array.isArray(res.data)) {
-          setNotifications(res.data);
-        }
-      } catch (err) {
-        console.warn("Failed to load notifications from API:", err);
-      }
-    }
     loadNotifs();
-  }, [setNotifications]);
+  }, [loadNotifs]);
+
+  // Realtime reconnect catch-up for notifications
+  React.useEffect(() => {
+    const unsub = onReconnect(() => {
+      apiClient.invalidate("/api/notifications");
+      loadNotifs();
+    });
+    return unsub;
+  }, [onReconnect, loadNotifs]);
 
   // Realtime notification sync
   React.useEffect(() => {

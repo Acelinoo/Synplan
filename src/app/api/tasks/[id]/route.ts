@@ -88,10 +88,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Validate assigneeId belongs to this workspace if changing assignee
+    // Validate assigneeId belongs strictly to this workspace if changing assignee
     let validAssigneeId = existing.assigneeId;
     if (assigneeId !== undefined) {
-      if (assigneeId) {
+      if (assigneeId !== null && assigneeId !== "") {
         const isMember = await prisma.workspaceMember.findUnique({
           where: {
             workspaceId_userId: {
@@ -101,7 +101,17 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
           },
           select: { userId: true },
         });
-        validAssigneeId = isMember ? isMember.userId : null;
+        if (!isMember) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Bad Request",
+              message: `Assignee '${assigneeId}' is not a valid member of this workspace`,
+            },
+            { status: 400 }
+          );
+        }
+        validAssigneeId = isMember.userId;
       } else {
         validAssigneeId = null;
       }

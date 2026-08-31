@@ -140,29 +140,59 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
   };
 
   const toggleSubtask = async (subId: string) => {
-    const updatedSubtasks = (task.subtasks || []).map((s) =>
+    const prevSubtasks = task.subtasks || [];
+    const updatedSubtasks = prevSubtasks.map((s) =>
       s.id === subId ? { ...s, completed: !s.completed } : s
     );
     updateTask(task.id, { subtasks: updatedSubtasks });
     try {
-      await apiClient.updateTask(task.id, { subtasks: updatedSubtasks });
-    } catch (e) {
-      console.warn("Subtask sync in drawer error:", e);
+      const res = await apiClient.updateTask(task.id, { subtasks: updatedSubtasks });
+      if (!res.success) {
+        updateTask(task.id, { subtasks: prevSubtasks });
+        addToast({
+          title: "Gagal Menyimpan Subtask",
+          description: res.message || "Gagal memperbarui checklist subtask di server.",
+          variant: "danger",
+        });
+      }
+    } catch (e: any) {
+      updateTask(task.id, { subtasks: prevSubtasks });
+      addToast({
+        title: "Koneksi Bermasalah",
+        description: e?.message || "Gagal menyimpan perubahan subtask.",
+        variant: "danger",
+      });
     }
   };
 
   const handleStatusChange = async (newStatus: TaskStatus) => {
+    const prevStatus = task.status;
+    const prevCompletedAt = task.completedAt;
     moveTaskStatus(task.id, newStatus);
     try {
-      await apiClient.updateTaskStatus(task.id, newStatus);
-    } catch (e) {
-      console.warn("Status change error in drawer:", e);
-    }
-    if (newStatus === "done") {
+      const res = await apiClient.updateTaskStatus(task.id, newStatus);
+      if (res.success) {
+        if (newStatus === "done") {
+          addToast({
+            title: "🎉 Task Completed!",
+            description: `Great job! "${task.title}" is marked as done.`,
+            variant: "success",
+          });
+        }
+      } else {
+        moveTaskStatus(task.id, prevStatus, prevCompletedAt);
+        addToast({
+          title: "Gagal Mengubah Status",
+          description: res.message || res.error || "Gagal memperbarui status task di server.",
+          variant: "danger",
+        });
+      }
+    } catch (e: any) {
+      moveTaskStatus(task.id, prevStatus, prevCompletedAt);
       addToast({
-        title: "🎉 Task Completed!",
-        description: `Great job! "${task.title}" is marked as done.`,
-        variant: "success",
+        title: "Koneksi Bermasalah",
+        description: e?.message || "Gagal terhubung ke server untuk memperbarui status.",
+        variant: "danger",
       });
     }
   };
