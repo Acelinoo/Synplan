@@ -15,6 +15,7 @@ import { parseHeuristicIntent } from "../src/lib/ai/planner";
 import { AiExecutionContext, AiPlan, AiAction } from "../src/lib/ai/types";
 import { resetIdempotencyStore } from "../src/lib/ai/idempotency";
 import { generateUndoPlanFromReceipt } from "../src/lib/ai/receiptStore";
+import { prisma } from "../src/lib/prisma";
 
 /**
  * Phase 7: Confirmation, Safety & UX Hardening Security Verification Suite
@@ -109,7 +110,7 @@ async function runPhase7SecuritySuite() {
   console.log("  SYNPLAN PHASE 7: CONFIRMATION, SAFETY & UX HARDENING");
   console.log("=======================================================\n");
 
-  resetConfirmationStore();
+  await resetConfirmationStore();
   resetIdempotencyStore();
 
   const ctx = createTestContext();
@@ -320,12 +321,12 @@ async function runPhase7SecuritySuite() {
   assert(fp1 !== fpModified, "3.2 Payload change produces different plan fingerprint");
 
   // 3.3 Register pending confirmation
-  const pendingRecord = registerPendingConfirmation(validDelTask.validatedPlan, ctx);
+  const pendingRecord = await registerPendingConfirmation(validDelTask.validatedPlan, ctx);
   assert(pendingRecord.token.startsWith("conf_"), "3.3 registerPendingConfirmation generates valid token");
   assert(pendingRecord.status === "PENDING", "3.4 Initial confirmation status is PENDING");
 
   // 3.4 Successful validation of matching confirmation
-  const valSuccess = validatePendingConfirmation({
+  const valSuccess = await validatePendingConfirmation({
     token: pendingRecord.token,
     fingerprint: pendingRecord.planFingerprint,
     userId: ctx.userId,
@@ -334,7 +335,7 @@ async function runPhase7SecuritySuite() {
   assert(Boolean(valSuccess.isValid), "3.5 validatePendingConfirmation succeeds for valid token & fingerprint");
 
   // 3.5 Rejection on altered fingerprint
-  const valMismatch = validatePendingConfirmation({
+  const valMismatch = await validatePendingConfirmation({
     token: pendingRecord.token,
     fingerprint: "tampered_fingerprint_hash_value_1234567890",
     userId: ctx.userId,
@@ -348,7 +349,7 @@ async function runPhase7SecuritySuite() {
   console.log("\n--- 4. Multi-Tenant & User Authorization Isolation ---");
 
   // 4.1 Rejection when confirmed by different user
-  const valWrongUser = validatePendingConfirmation({
+  const valWrongUser = await validatePendingConfirmation({
     token: pendingRecord.token,
     userId: "usr_attacker_99",
     workspaceId: ctx.workspaceId,
@@ -356,7 +357,7 @@ async function runPhase7SecuritySuite() {
   assert(Boolean(!valWrongUser.isValid && valWrongUser.error?.includes("milik pengguna lain")), "4.1 Confirmation from wrong user is rejected");
 
   // 4.2 Rejection when confirmed from different workspace
-  const valWrongWs = validatePendingConfirmation({
+  const valWrongWs = await validatePendingConfirmation({
     token: pendingRecord.token,
     userId: ctx.userId,
     workspaceId: "ws_foreign_tenant_99",
@@ -364,7 +365,7 @@ async function runPhase7SecuritySuite() {
   assert(Boolean(!valWrongWs.isValid && valWrongWs.error?.includes("workspace aktif")), "4.2 Cross-workspace confirmation is rejected");
 
   // 4.3 Fake / Spoofed token is rejected
-  const valFakeToken = validatePendingConfirmation({
+  const valFakeToken = await validatePendingConfirmation({
     token: "conf_fake_token_random_123",
     userId: ctx.userId,
     workspaceId: ctx.workspaceId,
@@ -377,9 +378,9 @@ async function runPhase7SecuritySuite() {
   console.log("\n--- 5. Cancellation & Expiration Handlers ---");
 
   // 5.1 Invalidate pending confirmation
-  const invRes = invalidatePendingConfirmation(pendingRecord.token, "CANCELLED");
+  const invRes = await invalidatePendingConfirmation(pendingRecord.token, "CANCELLED");
   assert(invRes === true, "5.1 invalidatePendingConfirmation succeeds");
-  const valCancelled = validatePendingConfirmation({
+  const valCancelled = await validatePendingConfirmation({
     token: pendingRecord.token,
     userId: ctx.userId,
     workspaceId: ctx.workspaceId,
@@ -387,11 +388,11 @@ async function runPhase7SecuritySuite() {
   assert(Boolean(!valCancelled.isValid && valCancelled.error?.includes("CANCELLED")), "5.2 Cancelled confirmation cannot be executed");
 
   // 5.2 clearUserPendingConfirmations on cancel prompt
-  const newPending = registerPendingConfirmation(validDelProj.validatedPlan, ctx);
-  const clearedCount = clearUserPendingConfirmations(ctx.userId, ctx.workspaceId);
+  const newPending = await registerPendingConfirmation(validDelProj.validatedPlan, ctx);
+  const clearedCount = await clearUserPendingConfirmations(ctx.userId, ctx.workspaceId);
   assert(clearedCount >= 1, "5.3 clearUserPendingConfirmations clears user active confirmation");
   assert(
-    getUserActivePendingConfirmation(ctx.userId, ctx.workspaceId) === null,
+    (await getUserActivePendingConfirmation(ctx.userId, ctx.workspaceId)) === null,
     "5.4 Active confirmation index is cleared"
   );
 
@@ -401,9 +402,9 @@ async function runPhase7SecuritySuite() {
   console.log("\n--- 6. Replay Attack & Idempotency Execution Protection ---");
 
   // 6.1 Mark executed prevents replay
-  const execPending = registerPendingConfirmation(validDelTask.validatedPlan, ctx);
-  markConfirmationExecuted(execPending.token);
-  const valReplayed = validatePendingConfirmation({
+  const execPending = await registerPendingConfirmation(validDelTask.validatedPlan, ctx);
+  await markConfirmationExecuted(execPending.token);
+  const valReplayed = await validatePendingConfirmation({
     token: execPending.token,
     userId: ctx.userId,
     workspaceId: ctx.workspaceId,
@@ -636,9 +637,13 @@ async function runPhase7SecuritySuite() {
   console.log("\n--- 12. TTL Expiration & Subsequent Plan Invalidation ---");
 
   // 12.1 Simulated expired token
-  const expRecord = registerPendingConfirmation(validDelTask.validatedPlan, ctx);
-  expRecord.expiresAt = new Date(Date.now() - 5000).toISOString(); // 5 seconds in past
-  const expVal = validatePendingConfirmation({
+  const expRecord = await registerPendingConfirmation(validDelTask.validatedPlan, ctx);
+  expRecord.expiresAt = new Date(Date.now() - 5000).toISOString();
+  await prisma.aiConfirmationSession.update({
+    where: { token: expRecord.token },
+    data: { expiresAt: new Date(Date.now() - 5000) },
+  }).catch(() => {});
+  const expVal = await validatePendingConfirmation({
     token: expRecord.token,
     userId: ctx.userId,
     workspaceId: ctx.workspaceId,
@@ -646,16 +651,16 @@ async function runPhase7SecuritySuite() {
   assert(Boolean(!expVal.isValid && expVal.error?.includes("kadaluarsa")), "12.1 Expired confirmation token is rejected");
 
   // 12.2 Registering Plan B automatically invalidates pending Plan A for same user
-  const planARecord = registerPendingConfirmation(validDelTask.validatedPlan, ctx);
-  const planBRecord = registerPendingConfirmation(validDelProj.validatedPlan, ctx);
-  const valPlanA = validatePendingConfirmation({
+  const planARecord = await registerPendingConfirmation(validDelTask.validatedPlan, ctx);
+  const planBRecord = await registerPendingConfirmation(validDelProj.validatedPlan, ctx);
+  const valPlanA = await validatePendingConfirmation({
     token: planARecord.token,
     userId: ctx.userId,
     workspaceId: ctx.workspaceId,
   });
   assert(Boolean(!valPlanA.isValid && valPlanA.error?.includes("CANCELLED")), "12.2 Generating new plan invalidates previous pending confirmation");
 
-  const valPlanB = validatePendingConfirmation({
+  const valPlanB = await validatePendingConfirmation({
     token: planBRecord.token,
     userId: ctx.userId,
     workspaceId: ctx.workspaceId,

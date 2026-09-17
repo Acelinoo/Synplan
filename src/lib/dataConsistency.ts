@@ -157,15 +157,15 @@ export async function checkWorkspaceDataConsistency(workspaceId: string): Promis
       });
     }
 
-    // Business Invariant: progress in 0..100
-    if (project.progress < 0 || project.progress > 100) {
+    // Business Invariant: Project must have name and slug
+    if (!project.name || !project.slug) {
       hasBusinessInvariantFailure = true;
       issues.push({
-        type: "INVALID_PROJECT_PROGRESS",
+        type: "INVALID_PROJECT_DATA",
         entityType: "project",
         entityId: project.id,
         severity: "HIGH",
-        message: `Project [${project.id}] has invalid progress [${project.progress}%] (must be 0-100)`,
+        message: `Project [${project.id}] has missing name or slug`,
       });
     }
 

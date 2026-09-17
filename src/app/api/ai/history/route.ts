@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const history = getExecutionHistory(auth.workspaceId, auth.userId);
+    const history = await getExecutionHistory(auth.workspaceId, auth.userId);
 
     // Return sanitized execution history without sensitive database internals
     const sanitized = history.map((receipt) => ({

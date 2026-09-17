@@ -154,7 +154,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     const { auth, errorResponse } = await requireAuthGuard(req, "projects.delete", existing.workspaceId);
     if (errorResponse || !auth) return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
-    // Delete related subtasks, comments, tasks, phases, and project members atomically in transaction
+    // Delete related subtasks, comments, dependencies, tasks, milestones, phases, automations, and project members atomically in transaction
     await prisma.$transaction(async (tx) => {
       const projectTasks = await tx.task.findMany({
         where: { projectId: id },
@@ -163,13 +163,23 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       const taskIds = projectTasks.map((t) => t.id);
 
       if (taskIds.length > 0) {
+        await tx.taskDependency.deleteMany({
+          where: {
+            OR: [
+              { blockingTaskId: { in: taskIds } },
+              { blockedTaskId: { in: taskIds } },
+            ],
+          },
+        });
         await tx.taskComment.deleteMany({ where: { taskId: { in: taskIds } } });
         await tx.subtask.deleteMany({ where: { taskId: { in: taskIds } } });
         await tx.task.deleteMany({ where: { id: { in: taskIds } } });
       }
 
+      await tx.milestone.deleteMany({ where: { projectId: id } });
       await tx.phase.deleteMany({ where: { projectId: id } });
       await tx.projectMember.deleteMany({ where: { projectId: id } });
+      await tx.automationRule.deleteMany({ where: { projectId: id } });
       await tx.project.delete({ where: { id } });
     });
 

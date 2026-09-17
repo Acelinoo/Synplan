@@ -61,6 +61,21 @@ export async function GET(req: NextRequest) {
             avatarUrl: true,
             role: true,
             createdAt: true,
+            projectMembers: {
+              where: {
+                project: { workspaceId: targetWorkspaceId },
+              },
+              include: {
+                project: {
+                  select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    color: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -131,6 +146,13 @@ export async function GET(req: NextRequest) {
         totalAssignedCount: totalAssigned,
         completedTaskCount: completedTasks,
         joinedAt: m.joinedAt.toISOString(),
+        projects: m.user.projectMembers?.map((pm: any) => ({
+          id: pm.project.id,
+          name: pm.project.name,
+          slug: pm.project.slug,
+          color: pm.project.color,
+          role: pm.role,
+        })) || [],
       };
     });
 
@@ -274,7 +296,7 @@ export async function POST(req: NextRequest) {
 
     // Dispatch direct notification to the new member
     if (user.id !== auth.userId) {
-      createNotification({
+      await createNotification({
         workspaceId: targetWorkspaceId,
         userId: user.id,
         type: "TEAM_MEMBER_ADDED",
@@ -309,7 +331,7 @@ export async function POST(req: NextRequest) {
 }
 
 // PUT /api/team/members - Update squad member role
-export async function PUT(req: NextRequest) {
+async function handleRoleUpdate(req: NextRequest) {
   try {
     const rateLimit = applyRateLimit(req, apiRateLimiter);
     if (rateLimit.errorResponse) return rateLimit.errorResponse;
@@ -379,6 +401,21 @@ export async function PUT(req: NextRequest) {
       ipAddress: auth.ipAddress,
     });
 
+    // Dispatch direct notification to member if role was changed by another user
+    if (target.userId !== auth.user.id) {
+      await createNotification({
+        workspaceId: target.workspaceId,
+        userId: target.userId,
+        actorId: auth.user.id,
+        type: "TEAM_MEMBER_ADDED",
+        title: "Squad Role Updated",
+        description: `Your workspace squad role was updated to ${normalizedRole}`,
+        entityType: "TEAM",
+        entityId: memberId,
+        link: `/team`,
+      }).catch(() => {});
+    }
+
     return NextResponse.json({
       success: true,
       data: updated,
@@ -387,6 +424,14 @@ export async function PUT(req: NextRequest) {
   } catch (error: any) {
     return createApiErrorResponse(error, "Failed to update member role");
   }
+}
+
+export async function PUT(req: NextRequest) {
+  return handleRoleUpdate(req);
+}
+
+export async function PATCH(req: NextRequest) {
+  return handleRoleUpdate(req);
 }
 
 // DELETE /api/team/members - Remove squad member atomically (cleans up task assignments & project memberships)

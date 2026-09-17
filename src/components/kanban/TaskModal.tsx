@@ -5,17 +5,17 @@ import { X, CheckSquare, Plus, Trash2, Calendar, Flag, User, Layers } from "luci
 import { useTaskStore, useWorkspaceStore, useUiStore } from "@/store";
 import { Task, TaskStatus, TaskPriority, Subtask } from "@/types";
 import { Button } from "@/components/ui/button";
-import { MagnetButton } from "@/components/ui/magnet-button";
 import { apiClient } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 
 interface TaskModalProps {
   editingTask?: Task | null;
   defaultStatus?: TaskStatus;
+  defaultProjectId?: string;
   onClose?: () => void;
 }
 
-export function TaskModal({ editingTask, defaultStatus = "todo", onClose }: TaskModalProps) {
+export function TaskModal({ editingTask, defaultStatus = "todo", defaultProjectId, onClose }: TaskModalProps) {
   const { isCreateTaskModalOpen, setCreateTaskModalOpen, addToast } = useUiStore();
   const { addTask, updateTask } = useTaskStore();
   const { projects, setProjects, activeWorkspace, members, setMembers } = useWorkspaceStore();
@@ -27,7 +27,7 @@ export function TaskModal({ editingTask, defaultStatus = "todo", onClose }: Task
   const [status, setStatus] = React.useState<TaskStatus>(editingTask?.status || defaultStatus);
   const [priority, setPriority] = React.useState<TaskPriority>(editingTask?.priority || "medium");
   const [projectId, setProjectId] = React.useState<string>(
-    editingTask?.projectId || (projects[0]?.id || "")
+    editingTask?.projectId || defaultProjectId || (projects[0]?.id || "")
   );
   const [assigneeId, setAssigneeId] = React.useState<string>(editingTask?.assigneeId || "");
   const [dueDate, setDueDate] = React.useState(editingTask?.dueDate || "2026-09-15");

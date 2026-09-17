@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       cleanPrompt.startsWith("batalkan");
 
     if (isCancelPrompt) {
-      clearUserPendingConfirmations(auth.userId, auth.workspaceId);
+      await clearUserPendingConfirmations(auth.userId, auth.workspaceId);
     }
 
     // 1. Gather server-side context for active workspace
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Register Server-Authoritative Confirmation Token if plan requires confirmation
     if (plan.requiresConfirmation && plan.actions.length > 0 && plan.status === "NEEDS_CONFIRMATION") {
-      const pendingRecord = registerPendingConfirmation(plan, context);
+      const pendingRecord = await registerPendingConfirmation(plan, context);
       plan.confirmationToken = pendingRecord.token;
       plan.planFingerprint = pendingRecord.planFingerprint;
       plan.confirmationExpiresAt = pendingRecord.expiresAt;

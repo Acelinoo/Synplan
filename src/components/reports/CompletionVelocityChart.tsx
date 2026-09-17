@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { TrendingUp, BarChart2 } from "lucide-react";
-import { SpotlightCard } from "@/components/ui/spotlight-card";
 
 interface VelocityDataPoint {
   week: string;
@@ -49,7 +48,7 @@ export function CompletionVelocityChart({ dateRange = "30d" }: CompletionVelocit
   const current = velocityDatasets[dateRange] || velocityDatasets["30d"];
 
   return (
-    <SpotlightCard className="flex flex-col justify-between">
+    <div className="flex flex-col justify-between rounded-lg border border-border bg-card p-5 shadow-xs transition-colors hover:border-border/80">
       <div>
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
@@ -115,6 +114,6 @@ export function CompletionVelocityChart({ dateRange = "30d" }: CompletionVelocit
           %
         </span>
       </div>
-    </SpotlightCard>
+    </div>
   );
 }

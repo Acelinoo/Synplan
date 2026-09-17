@@ -2,12 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { publishWorkspaceEvent } from "@/lib/realtimeServer";
 import { NotificationType, NotificationItem } from "@/types";
 
-interface CreateNotificationParams {
+export interface CreateNotificationParams {
   workspaceId: string;
   userId: string;
   type: NotificationType;
   title: string;
   description: string;
+  actorId?: string;
   entityType?: "TASK" | "PROJECT" | "TEAM" | "SYSTEM";
   entityId?: string;
   link?: string;
@@ -15,7 +16,8 @@ interface CreateNotificationParams {
 
 /**
  * Centralized Notification Service
- * Creates notification in PostgreSQL and broadcasts realtime event to authorized recipient.
+ * Creates notification in PostgreSQL with sliding-window deduplication,
+ * actor self-notification suppression, and broadcasts realtime events.
  */
 export async function createNotification(params: CreateNotificationParams): Promise<NotificationItem | null> {
   try {
@@ -23,7 +25,12 @@ export async function createNotification(params: CreateNotificationParams): Prom
       return null;
     }
 
-    // 1. Verify recipient user exists
+    // 1. Anti-self notification suppression: Do not notify actor for their own actions
+    if (params.actorId && params.actorId === params.userId) {
+      return null;
+    }
+
+    // 2. Verify recipient user exists
     const recipient = await prisma.user.findUnique({
       where: { id: params.userId },
       select: { id: true, name: true },
@@ -33,7 +40,39 @@ export async function createNotification(params: CreateNotificationParams): Prom
       return null;
     }
 
-    // 2. Persist to PostgreSQL database
+    // 3. Sliding-window deduplication check (10-second window for identical event)
+    const duplicateWindowMs = 10 * 1000;
+    const threshold = new Date(Date.now() - duplicateWindowMs);
+
+    const existingRecent = await prisma.notification.findFirst({
+      where: {
+        workspaceId: params.workspaceId,
+        userId: params.userId,
+        type: params.type,
+        link: params.link || null,
+        title: params.title,
+        createdAt: { gte: threshold },
+      },
+    });
+
+    if (existingRecent) {
+      return {
+        id: existingRecent.id,
+        workspaceId: existingRecent.workspaceId,
+        userId: existingRecent.userId,
+        title: existingRecent.title,
+        description: existingRecent.description,
+        type: existingRecent.type as NotificationType,
+        entityType: params.entityType || null,
+        entityId: params.entityId || null,
+        link: existingRecent.link,
+        read: existingRecent.read,
+        createdAt: existingRecent.createdAt.toISOString(),
+        updatedAt: existingRecent.updatedAt.toISOString(),
+      };
+    }
+
+    // 4. Persist to PostgreSQL database
     const notification = await prisma.notification.create({
       data: {
         workspaceId: params.workspaceId,
@@ -46,7 +85,7 @@ export async function createNotification(params: CreateNotificationParams): Prom
       },
     });
 
-    // 3. Format payload
+    // 5. Format payload
     const payload: NotificationItem = {
       id: notification.id,
       workspaceId: notification.workspaceId,
@@ -62,7 +101,7 @@ export async function createNotification(params: CreateNotificationParams): Prom
       updatedAt: notification.updatedAt.toISOString(),
     };
 
-    // 4. Broadcast Realtime Event to workspace channel
+    // 6. Broadcast Realtime Event to workspace channel
     await publishWorkspaceEvent(params.workspaceId, "NOTIFICATION_CREATED", payload, {
       taskId: params.entityType === "TASK" ? params.entityId : undefined,
       projectId: params.entityType === "PROJECT" ? params.entityId : undefined,

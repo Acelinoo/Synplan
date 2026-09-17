@@ -37,11 +37,11 @@ async function runE2ETests() {
       data: {
         workspaceId,
         name: "E2E Automated Test Project",
+        slug: "e2e-automated-test-" + Date.now(),
         description: "Testing real PostgreSQL persistence end-to-end",
         color: "#6366F1",
         deadline: new Date("2026-11-30"),
         status: "ACTIVE",
-        progress: 0,
       },
     });
     createdProjectId = proj.id;
@@ -65,12 +65,12 @@ async function runE2ETests() {
   try {
     await prisma.project.update({
       where: { id: createdProjectId },
-      data: { name: "E2E Updated Project Title", progress: 75, status: "IN_PROGRESS" as any },
+      data: { name: "E2E Updated Project Title", description: "Updated description" },
     });
 
     // Simulate refresh
     const refreshed = await prisma.project.findUnique({ where: { id: createdProjectId } });
-    if (refreshed && refreshed.name === "E2E Updated Project Title" && refreshed.progress === 75) {
+    if (refreshed && refreshed.name === "E2E Updated Project Title" && refreshed.description === "Updated description") {
       results.push({ feature: "Project Update", api: "PASS", postgreSQL: "PASS", refresh: "PASS", result: "PASS" });
       console.log("  ✅ Project Update: PASS");
     } else {

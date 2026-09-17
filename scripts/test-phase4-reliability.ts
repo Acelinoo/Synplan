@@ -11,7 +11,7 @@ import { POST as createPhase } from "../src/app/api/phases/route";
 import { POST as reorderPhases } from "../src/app/api/phases/reorder/route";
 import { POST as inviteMember, DELETE as removeMember } from "../src/app/api/team/members/route";
 import { NextRequest } from "next/server";
-import { TaskStatus, Role, ProjectStatus } from "@prisma/client";
+import { TaskStatus, Role, ProjectStatus, ProjectRole } from "@prisma/client";
 
 async function main() {
   console.log("================================================================================");
@@ -94,6 +94,7 @@ async function main() {
         id: `prj_init_${testSuffix}`,
         workspaceId: workspace.id,
         name: "Initial Project",
+        slug: `initial-project-${testSuffix}`,
         status: ProjectStatus.ACTIVE,
       },
     });
@@ -233,7 +234,7 @@ async function main() {
         id: `prj_prog_${testSuffix}`,
         workspaceId: workspace.id,
         name: "Progress Sync Project",
-        progress: 0,
+        slug: `progress-sync-${testSuffix}`,
         status: ProjectStatus.ACTIVE,
       },
     });
@@ -274,7 +275,7 @@ async function main() {
     record("Transactions", "2.2 Evaluator reports 50% project progress", statusBody1.evaluator?.projectProgress === 50);
 
     const checkProj1 = await prisma.project.findUnique({ where: { id: progressProject.id } });
-    record("Transactions", "2.3 Database Project.progress was updated atomically to 50%", checkProj1?.progress === 50);
+    record("Transactions", "2.3 Evaluator reports 50% project progress dynamically", statusBody1.evaluator?.projectProgress === 50);
 
     // Update syncTask2 to DONE -> Project progress should become 100% and status COMPLETED
     const statusReq2 = new NextRequest("http://localhost:3000/api/tasks/status", {
@@ -291,7 +292,7 @@ async function main() {
     record("Transactions", "2.4 Final task completion triggers 100% progress and projectCompleted flag", statusBody2.evaluator?.projectProgress === 100 && statusBody2.evaluator?.projectCompleted === true);
 
     const checkProj2 = await prisma.project.findUnique({ where: { id: progressProject.id } });
-    record("Transactions", "2.5 Database Project.status updated atomically to COMPLETED", checkProj2?.status === ProjectStatus.COMPLETED && checkProj2?.progress === 100);
+    record("Transactions", "2.5 Database Project.status updated atomically to COMPLETED", checkProj2?.status === ProjectStatus.COMPLETED);
 
     // 2.2 Member Removal Atomic Cleanup (Unassigning Tasks & Removing Project Memberships)
     const cleanupUser = await prisma.user.create({
@@ -317,7 +318,7 @@ async function main() {
         id: `pm_cleanup_${testSuffix}`,
         projectId: progressProject.id,
         userId: cleanupUser.id,
-        role: Role.MEMBER,
+        role: ProjectRole.CONTRIBUTOR,
       },
     });
 
@@ -351,10 +352,10 @@ async function main() {
 
     // 2.3 Phase Reordering Atomic Transaction
     const phaseA = await prisma.phase.create({
-      data: { id: `ph_a_${testSuffix}`, projectId: progressProject.id, name: "Phase A", order: 1 },
+      data: { id: `ph_a_${testSuffix}`, workspaceId: workspace.id, projectId: progressProject.id, name: "Phase A", order: 1 },
     });
     const phaseB = await prisma.phase.create({
-      data: { id: `ph_b_${testSuffix}`, projectId: progressProject.id, name: "Phase B", order: 2 },
+      data: { id: `ph_b_${testSuffix}`, workspaceId: workspace.id, projectId: progressProject.id, name: "Phase B", order: 2 },
     });
 
     const reorderReq = new NextRequest("http://localhost:3000/api/phases/reorder", {

@@ -7,6 +7,7 @@ export interface ApiResponse<T = any> {
   message?: string;
   evaluator?: any;
   meta?: any;
+  pagination?: any;
 }
 
 interface CacheEntry<T> {
@@ -14,9 +15,8 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-// In-memory scoped cache and in-flight request tracker
-const inFlightMap = new Map<string, Promise<ApiResponse<any>>>();
 const memoryCache = new Map<string, CacheEntry<any>>();
+const inFlightMap = new Map<string, Promise<ApiResponse<any>>>();
 
 const BASE_URL = "";
 
@@ -38,15 +38,16 @@ async function request<T>(
   options?: RequestInit,
   cacheConfig?: { ttlMs?: number; bypassCache?: boolean }
 ): Promise<ApiResponse<T>> {
-  const method = (options?.method || "GET").toUpperCase();
+  const method = options?.method?.toUpperCase() || "GET";
   const isGet = method === "GET";
 
   try {
     const customHeaders: Record<string, string> = {};
-    let activeWsId = "";
+    let activeWsId = "global";
 
+    // In browser environment, automatically append active workspace id header if stored
     if (typeof window !== "undefined") {
-      const storedWs = localStorage.getItem("synplan_active_ws");
+      const storedWs = localStorage.getItem("synplan_active_ws") || localStorage.getItem("synplan_active_workspace");
       if (storedWs) {
         try {
           const parsed = JSON.parse(storedWs);
@@ -95,21 +96,24 @@ async function request<T>(
         });
       }
 
-      return json;
-    })().finally(() => {
-      inFlightMap.delete(cacheKey);
-    });
+      return json as ApiResponse<T>;
+    })();
 
     if (isGet) {
       inFlightMap.set(cacheKey, fetchPromise);
+      try {
+        const result = await fetchPromise;
+        return result;
+      } finally {
+        inFlightMap.delete(cacheKey);
+      }
     }
 
     return await fetchPromise;
-  } catch (error: any) {
-    console.error(`API Error on ${endpoint}:`, error);
+  } catch (err: any) {
     return {
       success: false,
-      error: error?.message || "Network request failed",
+      error: err.message || "Network request failed",
     };
   }
 }
@@ -117,26 +121,59 @@ async function request<T>(
 export const apiClient = {
   // Cache Management
   clearCache: () => invalidateApiCache(),
-  invalidate: (prefix: string) => invalidateApiCache(prefix),
+  invalidate: (prefix?: string) => invalidateApiCache(prefix),
+
+  // Auth
+  async getSession() {
+    return request<{
+      authenticated: boolean;
+      user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
+      workspaces: Array<{ id: string; name: string; slug: string; logoUrl: string | null; role: string }>;
+    }>("/api/auth/session", undefined, { bypassCache: true });
+  },
+  async logout() {
+    const res = await request<{ success: boolean; message: string }>("/api/auth/logout", {
+      method: "POST",
+    });
+    memoryCache.clear();
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("synplan_active_ws");
+        localStorage.removeItem("synplan_active_workspace");
+      } catch (e) {}
+    }
+    return res;
+  },
 
   // Workspaces
-  async getWorkspaces(options?: { bypassCache?: boolean }) {
-    return request<any[]>("/api/workspaces", undefined, { ttlMs: 10000, bypassCache: options?.bypassCache });
+  async getWorkspaces() {
+    return request<any[]>("/api/workspaces", undefined, { ttlMs: 10000 });
   },
-  async createWorkspace(data: { name: string; slug?: string; ownerId?: string }) {
-    const res = await request<any>("/api/workspaces", {
-      method: "POST",
+  async getWorkspaceSettings(workspaceId?: string) {
+    const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    return request<any>(`/api/workspaces/settings${query}`);
+  },
+  async updateWorkspaceSettings(data: any, workspaceId?: string) {
+    const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    const res = await request<any>(`/api/workspaces/settings${query}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
     invalidateApiCache("/api/workspaces");
     return res;
   },
-  async updateWorkspaceSettings(data: { workspaceId?: string; name?: string; slug?: string; logoUrl?: string }) {
-    const res = await request<any>("/api/workspaces/settings", {
-      method: "PUT",
+
+  // User Profile & Identity
+  async getUserProfile() {
+    return request<any>("/api/auth/profile");
+  },
+  async updateUserProfile(data: { name?: string; avatarUrl?: string | null }) {
+    const res = await request<any>("/api/auth/profile", {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
-    invalidateApiCache("/api/workspaces");
+    invalidateApiCache("/api/auth/profile");
+    invalidateApiCache("/api/auth/session");
     return res;
   },
 
@@ -148,21 +185,30 @@ export const apiClient = {
 
   // Projects
   async getProjects(
-    params?: { workspaceId?: string; status?: string; search?: string; page?: number; limit?: number; cursor?: string },
+    paramsOrWorkspaceId?: string | { workspaceId?: string; status?: string; search?: string; sort?: string; page?: number; limit?: number; cursor?: string },
     options?: { bypassCache?: boolean }
   ) {
     const search = new URLSearchParams();
-    if (params?.workspaceId) search.set("workspaceId", params.workspaceId);
-    if (params?.status) search.set("status", params.status);
-    if (params?.search) search.set("search", params.search);
-    if (params?.page) search.set("page", params.page.toString());
-    if (params?.limit) search.set("limit", params.limit.toString());
-    if (params?.cursor) search.set("cursor", params.cursor);
+    if (typeof paramsOrWorkspaceId === "string") {
+      if (paramsOrWorkspaceId) search.set("workspaceId", paramsOrWorkspaceId);
+    } else if (paramsOrWorkspaceId) {
+      if (paramsOrWorkspaceId.workspaceId) search.set("workspaceId", paramsOrWorkspaceId.workspaceId);
+      if (paramsOrWorkspaceId.status) search.set("status", paramsOrWorkspaceId.status);
+      if (paramsOrWorkspaceId.search) search.set("search", paramsOrWorkspaceId.search);
+      if (paramsOrWorkspaceId.sort) search.set("sort", paramsOrWorkspaceId.sort);
+      if (paramsOrWorkspaceId.page) search.set("page", paramsOrWorkspaceId.page.toString());
+      if (paramsOrWorkspaceId.limit) search.set("limit", paramsOrWorkspaceId.limit.toString());
+      if (paramsOrWorkspaceId.cursor) search.set("cursor", paramsOrWorkspaceId.cursor);
+    }
     const qs = search.toString() ? `?${search.toString()}` : "";
     return request<any[]>(`/api/projects${qs}`, undefined, { ttlMs: 4000, bypassCache: options?.bypassCache });
   },
   async getProject(id: string) {
     return request<any>(`/api/projects/${id}`);
+  },
+  async getProjectHealth(projectId: string, workspaceId?: string) {
+    const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    return request<any>(`/api/projects/${projectId}/health${qs}`, undefined, { ttlMs: 3000 });
   },
   async createProject(data: any) {
     const res = await request<any>("/api/projects", {
@@ -176,19 +222,6 @@ export const apiClient = {
       const wsId = res.data.workspaceId;
       if (wsId) {
         realtimeClient.broadcast(`workspace:${wsId}`, "PROJECT_CREATED", res.data, {
-          workspaceId: wsId,
-          projectId: res.data.id,
-        });
-        realtimeClient.broadcast(`workspace:${wsId}`, "ACTIVITY_CREATED", {
-          id: `act_${Date.now()}_${res.data.id}`,
-          actor: { name: "Squad Member", initial: "S" },
-          action: "created project",
-          target: res.data.name,
-          timestamp: "Just now",
-          entityType: "PROJECT",
-          entityId: res.data.id,
-          link: `/projects/${res.data.id}`,
-        }, {
           workspaceId: wsId,
           projectId: res.data.id,
         });
@@ -236,6 +269,36 @@ export const apiClient = {
     return res;
   },
 
+  // Project Members
+  async getProjectMembers(projectId: string) {
+    return request<any[]>(`/api/projects/${encodeURIComponent(projectId)}/members`);
+  },
+  async addProjectMember(projectId: string, data: { userId: string; role?: "LEAD" | "CONTRIBUTOR" | "VIEWER" }) {
+    const res = await request<any>(`/api/projects/${encodeURIComponent(projectId)}/members`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    invalidateApiCache(`/api/projects/${projectId}`);
+    return res;
+  },
+  async updateProjectMemberRole(projectId: string, data: { memberId?: string; userId?: string; role: string }) {
+    const res = await request<any>(`/api/projects/${encodeURIComponent(projectId)}/members`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+    invalidateApiCache(`/api/projects/${projectId}`);
+    return res;
+  },
+  async removeProjectMember(projectId: string, memberIdOrUserId: string) {
+    const res = await request<any>(
+      `/api/projects/${encodeURIComponent(projectId)}/members?memberId=${encodeURIComponent(memberIdOrUserId)}`,
+      { method: "DELETE" }
+    );
+    invalidateApiCache(`/api/projects/${projectId}`);
+    return res;
+  },
+
+
   // Tasks
   async getTasks(
     params?: {
@@ -246,6 +309,7 @@ export const apiClient = {
       priority?: string;
       assigneeId?: string;
       search?: string;
+      view?: string;
       page?: number;
       limit?: number;
       cursor?: string;
@@ -260,11 +324,12 @@ export const apiClient = {
     if (params?.priority) search.set("priority", params.priority);
     if (params?.assigneeId) search.set("assigneeId", params.assigneeId);
     if (params?.search) search.set("search", params.search);
+    if (params?.view) search.set("view", params.view);
     if (params?.page) search.set("page", params.page.toString());
     if (params?.limit) search.set("limit", params.limit.toString());
     if (params?.cursor) search.set("cursor", params.cursor);
     const qs = search.toString() ? `?${search.toString()}` : "";
-    return request<any[]>(`/api/tasks${qs}`, undefined, { ttlMs: 3000, bypassCache: options?.bypassCache });
+    return request<any>(`/api/tasks${qs}`, undefined, { ttlMs: 3000, bypassCache: options?.bypassCache });
   },
   async getTask(id: string) {
     return request<any>(`/api/tasks/${id}`);
@@ -282,20 +347,6 @@ export const apiClient = {
       const wsId = res.data.workspaceId;
       if (wsId) {
         realtimeClient.broadcast(`workspace:${wsId}`, "TASK_CREATED", res.data, {
-          workspaceId: wsId,
-          projectId: res.data.projectId,
-          taskId: res.data.id,
-        });
-        realtimeClient.broadcast(`workspace:${wsId}`, "ACTIVITY_CREATED", {
-          id: `act_${Date.now()}_${res.data.id}`,
-          actor: { name: "Squad Member", initial: "S" },
-          action: "created task",
-          target: res.data.title,
-          timestamp: "Just now",
-          entityType: "TASK",
-          entityId: res.data.id,
-          link: `/tasks?taskId=${res.data.id}`,
-        }, {
           workspaceId: wsId,
           projectId: res.data.projectId,
           taskId: res.data.id,
@@ -333,20 +384,6 @@ export const apiClient = {
             taskId: res.data.id,
           }
         );
-        realtimeClient.broadcast(`workspace:${wsId}`, "ACTIVITY_CREATED", {
-          id: `act_${Date.now()}_${res.data.id}`,
-          actor: { name: "Squad Member", initial: "S" },
-          action: `moved status to ${res.data.status?.toLowerCase().replace(/_/g, " ")}`,
-          target: res.data.title || "Task milestone",
-          timestamp: "Just now",
-          entityType: "TASK",
-          entityId: res.data.id,
-          link: `/tasks?taskId=${res.data.id}`,
-        }, {
-          workspaceId: wsId,
-          projectId: res.data.projectId,
-          taskId: res.data.id,
-        });
       }
     }
     return res;
@@ -405,6 +442,47 @@ export const apiClient = {
         );
       }
     }
+    return res;
+  },
+
+  async batchMutateTasks(
+    action: "STATUS" | "ASSIGN" | "PRIORITY",
+    taskIds: string[],
+    payload: any,
+    workspaceId?: string
+  ) {
+    const res = await request<any>("/api/tasks/batch", {
+      method: "POST",
+      body: JSON.stringify({ action, taskIds, payload, workspaceId }),
+    });
+    invalidateApiCache("/api/tasks");
+    invalidateApiCache("/api/dashboard/summary");
+    invalidateApiCache("/api/projects");
+    return res;
+  },
+
+  // Task Dependencies
+  async getTaskDependencies(taskId: string, workspaceId?: string) {
+    const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    return request<any>(`/api/tasks/${encodeURIComponent(taskId)}/dependencies${qs}`);
+  },
+  async addTaskDependency(blockedTaskId: string, blockingTaskId: string, workspaceId?: string) {
+    const res = await request<any>(`/api/tasks/${encodeURIComponent(blockedTaskId)}/dependencies`, {
+      method: "POST",
+      body: JSON.stringify({ blockingTaskId, workspaceId }),
+    });
+    invalidateApiCache("/api/tasks");
+    invalidateApiCache("/api/projects");
+    return res;
+  },
+  async removeTaskDependency(taskId: string, dependencyId: string, workspaceId?: string) {
+    const wsQuery = workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    const res = await request<any>(
+      `/api/tasks/${encodeURIComponent(taskId)}/dependencies?dependencyId=${encodeURIComponent(dependencyId)}${wsQuery}`,
+      { method: "DELETE" }
+    );
+    invalidateApiCache("/api/tasks");
+    invalidateApiCache("/api/projects");
     return res;
   },
 
@@ -478,6 +556,13 @@ export const apiClient = {
     const res = await request<any>("/api/notifications", {
       method: "PATCH",
       body: JSON.stringify(params),
+    });
+    invalidateApiCache("/api/notifications");
+    return res;
+  },
+  async deleteNotification(id: string) {
+    const res = await request<any>(`/api/notifications?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
     });
     invalidateApiCache("/api/notifications");
     return res;
@@ -614,6 +699,73 @@ export const apiClient = {
     );
   },
 
+  // Activity & Audit Feed (Phase 4 Authoritative Service)
+  async getActivity(params?: {
+    workspaceId?: string;
+    projectId?: string;
+    actorId?: string;
+    entityType?: string;
+    action?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+    cursor?: string;
+  }) {
+    const search = new URLSearchParams();
+    if (params?.workspaceId) search.set("workspaceId", params.workspaceId);
+    if (params?.projectId) search.set("projectId", params.projectId);
+    if (params?.actorId) search.set("actorId", params.actorId);
+    if (params?.entityType) search.set("entityType", params.entityType);
+    if (params?.action) search.set("action", params.action);
+    if (params?.search) search.set("search", params.search);
+    if (params?.page) search.set("page", params.page.toString());
+    if (params?.limit) search.set("limit", params.limit.toString());
+    if (params?.cursor) search.set("cursor", params.cursor);
+    const qs = search.toString() ? `?${search.toString()}` : "";
+    return request<any>(`/api/activity${qs}`, undefined, { ttlMs: 3000 });
+  },
+
+  // My Work (Phase 3 Authoritative Work Engine Cockpit)
+  async getMyWork(workspaceId?: string) {
+    const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    return request<any>(`/api/tasks/my-work${qs}`, undefined, { ttlMs: 3000 });
+  },
+
+  // Workflow Automation (Phase 5 Authoritative Engine)
+  async getAutomations(workspaceId?: string) {
+    const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    return request<any[]>(`/api/automations${qs}`);
+  },
+  async createAutomation(data: any) {
+    const res = await request<any>("/api/automations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    invalidateApiCache("/api/automations");
+    return res;
+  },
+  async deleteAutomation(id: string) {
+    const res = await request<any>(`/api/automations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    invalidateApiCache("/api/automations");
+    return res;
+  },
+  async enableAutomation(id: string) {
+    const res = await request<any>(`/api/automations/${encodeURIComponent(id)}/enable`, {
+      method: "POST",
+    });
+    invalidateApiCache("/api/automations");
+    return res;
+  },
+  async disableAutomation(id: string) {
+    const res = await request<any>(`/api/automations/${encodeURIComponent(id)}/disable`, {
+      method: "POST",
+    });
+    invalidateApiCache("/api/automations");
+    return res;
+  },
+
   // Analytics & Reports
   async getAnalyticsReports(workspaceId?: string, options?: { bypassCache?: boolean }) {
     const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
@@ -669,24 +821,5 @@ export const apiClient = {
   },
   async getAiExecutionHistory() {
     return request<any[]>("/api/ai/history", undefined, { bypassCache: true });
-  },
-  async getSession() {
-    return request<{
-      authenticated: boolean;
-      user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
-      workspaces: Array<{ id: string; name: string; slug: string; logoUrl: string | null; role: string }>;
-    }>("/api/auth/session", undefined, { bypassCache: true });
-  },
-  async logout() {
-    const res = await request<{ success: boolean; message: string }>("/api/auth/logout", {
-      method: "POST",
-    });
-    memoryCache.clear();
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.removeItem("synplan_active_ws");
-      } catch (e) {}
-    }
-    return res;
   },
 };

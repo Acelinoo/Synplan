@@ -4,109 +4,131 @@
 
 @layer base {
   :root {
-    /* Light Mode Tokens - Matching Figma Reference */
-    --background: #EAF4FC;
-    --foreground: #102A45;
+    /* Synplan 2.0 Light Mode Tokens — High-Precision Slate-Cobalt Palette */
+    --background: #F8FAFC;         /* Slate 50 — clean, calm canvas */
+    --foreground: #0F172A;         /* Slate 900 — crisp high-contrast body text */
 
-    --sidebar-bg: #FFFFFF;
-    --sidebar-foreground: #102A45;
-    --sidebar-border: #D6E4F0;
-    --sidebar-accent: #102A45;
+    --sidebar-bg: #FFFFFF;         /* White sidebar for crisp structure */
+    --sidebar-foreground: #334155;  /* Slate 700 */
+    --sidebar-border: #E2E8F0;      /* Slate 200 */
+    --sidebar-accent: #0F3D64;      /* Deep Synplan Cobalt */
     --sidebar-accent-foreground: #FFFFFF;
 
-    --card: #FFFFFF;
-    --card-foreground: #102A45;
-    --card-border: #D9E8F5;
+    --card: #FFFFFF;               /* Surface level 1 */
+    --card-foreground: #0F172A;
+    --card-border: #E2E8F0;
+
+    --surface: #FFFFFF;
+    --surface-muted: #F1F5F9;      /* Slate 100 — table headers, muted bands */
+    --surface-elevated: #FFFFFF;   /* Modals, popovers */
 
     --popover: #FFFFFF;
-    --popover-foreground: #102A45;
+    --popover-foreground: #0F172A;
 
-    --primary: #12395C;
+    --primary: #0F3D64;            /* Synplan Deep Cobalt — authoritative, calm */
     --primary-foreground: #FFFFFF;
-    --primary-hover: #0E2C4A;
-    --primary-muted: rgba(18, 57, 92, 0.08);
+    --primary-hover: #0A2B47;
+    --primary-muted: rgba(15, 61, 100, 0.08);
 
-    --secondary: #F0F6FC;
-    --secondary-foreground: #102A45;
+    --secondary: #F1F5F9;          /* Slate 100 */
+    --secondary-foreground: #1E293B;
 
-    --muted: #E2EEF8;
-    --muted-foreground: #627D98;
+    --muted: #F1F5F9;
+    --muted-foreground: #64748B;   /* Slate 500 — secondary text */
 
-    --accent: #12395C;
+    --accent: #0F3D64;
     --accent-foreground: #FFFFFF;
 
-    --destructive: #EF4444;
+    --destructive: #DC2626;        /* Red 600 */
     --destructive-foreground: #FFFFFF;
 
-    --border: #D6E4F0;
-    --input: #D6E4F0;
-    --ring: #12395C;
+    --border: #E2E8F0;             /* Slate 200 */
+    --border-subtle: #F1F5F9;      /* Slate 100 */
+    --border-strong: #CBD5E1;      /* Slate 300 */
+    --input: #E2E8F0;
+    --ring: #0F3D64;
 
-    /* Semantic Status */
-    --status-todo: #94A3B8;
+    /* Semantic Task Status Tokens (Light) */
+    --status-backlog: #64748B;
+    --status-todo: #475569;
     --status-progress: #2563EB;
-    --status-review: #0284C7;
-    --status-done: #10B981;
-    --status-blocked: #EF4444;
+    --status-review: #D97706;
+    --status-done: #059669;
+    --status-blocked: #DC2626;
+    --status-cancelled: #94A3B8;
 
-    /* Priority */
+    /* Semantic Priority Tokens (Light) */
     --priority-low: #64748B;
-    --priority-medium: #2563EB;
-    --priority-high: #F59E0B;
-    --priority-urgent: #EF4444;
+    --priority-medium: #0284C7;
+    --priority-high: #D97706;
+    --priority-urgent: #DC2626;
 
-    --radius: 12px;
+    /* Radius Scale: Restrained, Geometric */
+    --radius-xs: 2px;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius: 8px;
   }
 
   .dark {
-    /* Dark Mode Tokens - Matching Figma Dark Mode Screenshot */
-    --background: #081420;
-    --foreground: #F0F6FC;
+    /* Synplan 2.0 Dark Mode Tokens — Deep Obsidian Slate Palette */
+    --background: #090D14;         /* Deep Obsidian Slate canvas */
+    --foreground: #F1F5F9;         /* Slate 100 */
 
-    --sidebar-bg: #081420;
-    --sidebar-foreground: #9FB3C8;
-    --sidebar-border: #12283A;
-    --sidebar-accent: #1A4B75;
+    --sidebar-bg: #0C121D;         /* Slightly offset dark sidebar */
+    --sidebar-foreground: #94A3B8;  /* Slate 400 */
+    --sidebar-border: #1E293B;      /* Slate 800 */
+    --sidebar-accent: #0284C7;      /* Vivid Sky / Cobalt */
     --sidebar-accent-foreground: #FFFFFF;
 
-    --card: #0E2338;
-    --card-foreground: #F0F6FC;
-    --card-border: #183754;
+    --card: #0F1726;               /* Surface level 1 */
+    --card-foreground: #F1F5F9;
+    --card-border: #1E293B;
 
-    --popover: #0E2338;
-    --popover-foreground: #F0F6FC;
+    --surface: #0F1726;
+    --surface-muted: #162032;      /* Surface level 2 — muted bands, table headers */
+    --surface-elevated: #1A263C;   /* Surface level 3 — popovers, dialogs */
 
-    --primary: #2072B8;
+    --popover: #162032;
+    --popover-foreground: #F1F5F9;
+
+    --primary: #0284C7;            /* Sky 600 / Cobalt — bright high-contrast on dark */
     --primary-foreground: #FFFFFF;
-    --primary-hover: #1A5E99;
-    --primary-muted: rgba(32, 114, 184, 0.15);
+    --primary-hover: #0369A1;
+    --primary-muted: rgba(2, 132, 199, 0.15);
 
-    --secondary: #12283A;
-    --secondary-foreground: #F0F6FC;
+    --secondary: #162032;
+    --secondary-foreground: #F1F5F9;
 
-    --muted: #142C44;
-    --muted-foreground: #7E9CB8;
+    --muted: #162032;
+    --muted-foreground: #94A3B8;   /* Slate 400 */
 
-    --accent: #2072B8;
+    --accent: #0284C7;
     --accent-foreground: #FFFFFF;
 
-    --destructive: #EF4444;
+    --destructive: #EF4444;        /* Red 500 */
     --destructive-foreground: #FFFFFF;
 
-    --border: #183754;
-    --input: #183754;
-    --ring: #2072B8;
+    --border: #1E293B;             /* Slate 800 */
+    --border-subtle: #162032;
+    --border-strong: #334155;      /* Slate 700 */
+    --input: #1E293B;
+    --ring: #0284C7;
 
-    /* Semantic Status */
+    /* Semantic Task Status Tokens (Dark) */
+    --status-backlog: #64748B;
     --status-todo: #94A3B8;
-    --status-progress: #3B82F6;
-    --status-review: #38BDF8;
+    --status-progress: #38BDF8;
+    --status-review: #F59E0B;
     --status-done: #10B981;
     --status-blocked: #EF4444;
+    --status-cancelled: #64748B;
 
-    /* Priority */
+    /* Semantic Priority Tokens (Dark) */
     --priority-low: #64748B;
-    --priority-medium: #3B82F6;
+    --priority-medium: #38BDF8;
     --priority-high: #F59E0B;
     --priority-urgent: #EF4444;
   }
@@ -116,32 +138,51 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+
+  ::selection {
+    background-color: var(--primary-muted);
+    color: var(--primary);
+  }
+
+  /* Accessible focus indicators for keyboard navigation */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
   input, textarea, select {
     color: inherit;
     background-color: var(--card);
   }
-  ::selection {
-    background-color: rgba(99, 102, 241, 0.2);
-    color: var(--primary);
-  }
 }
 
-/* Custom Scrollbar for High-Density Product Views */
+/* Restrained Custom Scrollbar for High-Density Product Views */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(161, 161, 170, 0.2);
+  background: rgba(148, 163, 184, 0.25);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(161, 161, 170, 0.4);
+  background: rgba(148, 163, 184, 0.45);
 }
+
+/* Reduced motion preference support */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

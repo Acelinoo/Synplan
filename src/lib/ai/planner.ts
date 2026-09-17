@@ -89,7 +89,7 @@ export async function generateAiPlan(
   // 2. Direct Scoped Undo / Recovery Interceptor
   const isUndoCommand = /^(?:undo|undo that|batalkan yang tadi|batalkan aksi tadi|kembalikan|revert)(?:\s+ya|\s+dong)?$/i.test(cleanPrompt);
   if (isUndoCommand) {
-    const latestReceipt = getLatestExecutionReceipt(enrichedContext.workspaceId, enrichedContext.userId);
+    const latestReceipt = await getLatestExecutionReceipt(enrichedContext.workspaceId, enrichedContext.userId);
     if (!latestReceipt) {
       return recordAndReturn({
         id: planId,

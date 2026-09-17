@@ -33,11 +33,11 @@ async function runMatrixVerification() {
       data: {
         workspaceId,
         name: "Persistence Debug Project",
+        slug: "persistence-debug-project-" + Date.now(),
         description: "Direct PostgreSQL Insertion Verification",
         color: "#6366F1",
         deadline: new Date("2026-12-31"),
         status: "ACTIVE",
-        progress: 0,
       },
     });
     debugProjectId = proj.id;
@@ -56,10 +56,10 @@ async function runMatrixVerification() {
   try {
     await prisma.project.update({
       where: { id: debugProjectId },
-      data: { name: "Persistence Debug Project (Updated)", progress: 50 },
+      data: { name: "Persistence Debug Project (Updated)", description: "Updated Description" },
     });
     const check = await prisma.project.findUnique({ where: { id: debugProjectId } });
-    if (check && check.name === "Persistence Debug Project (Updated)" && check.progress === 50) {
+    if (check && check.name === "Persistence Debug Project (Updated)" && check.description === "Updated Description") {
       matrix.push({ feature: "Update Project", ui: "PASS", api: "PASS", postgreSQL: "PASS", refresh: "PASS", status: "PASS" });
     } else {
       matrix.push({ feature: "Update Project", ui: "FAIL", api: "FAIL", postgreSQL: "FAIL", refresh: "FAIL", status: "FAIL" });

@@ -131,6 +131,11 @@ export const UpdateWorkspaceSettingsSchema = z.object({
   logoUrl: z.string().url("Invalid URL format").optional().nullable(),
 });
 
+export const UpdateUserProfileSchema = z.object({
+  name: z.string().trim().min(1, "Name cannot be empty").max(100, "Name cannot exceed 100 characters").optional(),
+  avatarUrl: z.string().url("Invalid URL format").optional().nullable(),
+});
+
 /**
  * ============================================================================
  * 5. TEAM MEMBERS SCHEMAS

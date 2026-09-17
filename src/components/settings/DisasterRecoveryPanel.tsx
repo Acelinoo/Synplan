@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Download, ShieldCheck, Database, RefreshCw, AlertCircle } from "lucide-react";
-import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceStore, useUiStore } from "@/store";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -90,7 +89,7 @@ export function DisasterRecoveryPanel() {
   };
 
   return (
-    <SpotlightCard className="space-y-4">
+    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2.5">
           <Database className="h-4 w-4 text-primary" />
@@ -168,6 +167,6 @@ export function DisasterRecoveryPanel() {
           </Button>
         </div>
       </div>
-    </SpotlightCard>
+    </div>
   );
 }

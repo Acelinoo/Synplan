@@ -23,6 +23,9 @@ export type RealtimeEventType =
   | "PROJECT_CREATED"
   | "PROJECT_UPDATED"
   | "PROJECT_DELETED"
+  | "PROJECT_MEMBER_ADDED"
+  | "PROJECT_MEMBER_UPDATED"
+  | "PROJECT_MEMBER_REMOVED"
   // Phase Events
   | "PHASE_CREATED"
   | "PHASE_UPDATED"
@@ -81,6 +84,9 @@ export interface RealtimeEventPayloadMap {
   PROJECT_CREATED: Project;
   PROJECT_UPDATED: Partial<Project> & { id: string };
   PROJECT_DELETED: { id: string };
+  PROJECT_MEMBER_ADDED: any;
+  PROJECT_MEMBER_UPDATED: any;
+  PROJECT_MEMBER_REMOVED: { id: string; projectId: string; userId?: string };
 
   PHASE_CREATED: Phase;
   PHASE_UPDATED: Partial<Phase> & { id: string; projectId?: string };

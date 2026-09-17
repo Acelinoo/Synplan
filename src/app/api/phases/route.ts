@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
 
     const phase = await prisma.phase.create({
       data: {
+        workspaceId: auth.workspaceId,
         projectId,
         name: name.trim(),
         description: description ? description.trim() : null,

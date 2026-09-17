@@ -66,7 +66,7 @@ async function runIsolationTestSuite() {
     });
 
     const projA = await prisma.project.create({
-      data: { workspaceId: wsA.id, name: "Alpha Secret Core", color: "#3B82F6", status: "ACTIVE" },
+      data: { workspaceId: wsA.id, name: "Alpha Secret Core", slug: `alpha-secret-${Date.now()}`, color: "#3B82F6", status: "ACTIVE" },
     });
     projAId = projA.id;
 
@@ -93,7 +93,7 @@ async function runIsolationTestSuite() {
     });
 
     const projB = await prisma.project.create({
-      data: { workspaceId: wsB.id, name: "Beta Proprietary Engine", color: "#10B981", status: "ACTIVE" },
+      data: { workspaceId: wsB.id, name: "Beta Proprietary Engine", slug: `beta-engine-${Date.now()}`, color: "#10B981", status: "ACTIVE" },
     });
     projBId = projB.id;
 

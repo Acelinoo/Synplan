@@ -1,28 +1,35 @@
 "use client";
 
 import * as React from "react";
-import {
-  CheckSquare,
-  Plus,
-  Search,
-  Filter,
-  SlidersHorizontal,
-  RotateCcw,
-} from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useTaskStore, useWorkspaceStore, useUiStore } from "@/store";
-import { Task, TaskStatus, TaskPriority } from "@/types";
 import dynamic from "next/dynamic";
+import {
+  Plus,
+  RefreshCw,
+  SlidersHorizontal,
+  CheckSquare,
+  Table as TableIcon,
+  Layers,
+  AlertCircle,
+  X,
+  CheckCircle2,
+} from "lucide-react";
+import { useWorkspaceStore, useUiStore } from "@/store";
+import { Task, TaskStatus, TaskPriority, BoardViewData } from "@/types";
 import { Button } from "@/components/ui/button";
-import { MagnetButton } from "@/components/ui/magnet-button";
-import { KanbanColumn } from "@/components/kanban/KanbanColumn";
-import { AnimatedGrid } from "@/components/ui/animated-grid";
-import { Skeleton, SkeletonCard, SkeletonAvatar } from "@/components/ui/skeleton";
-import TasksLoading from "./loading";
 import { apiClient } from "@/lib/apiClient";
-import { getDueDateState } from "@/lib/projectWorkflow";
 import { cn } from "@/lib/utils";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import {
+  SharedTaskToolbar,
+  ProjectBoardView,
+  ProjectListView,
+  ProjectTableView,
+  ProjectViewMode,
+  SharedFilterState,
+  ProjectGroupData,
+} from "@/components/project-workspace";
+import TasksLoading from "./loading";
 
 const TaskModal = dynamic(
   () => import("@/components/kanban/TaskModal").then((mod) => mod.TaskModal),
@@ -34,751 +41,697 @@ const TaskDetailDrawer = dynamic(
   { ssr: false }
 );
 
-const columnsConfig: { status: TaskStatus; title: string; dotColor: string }[] = [
-  { status: "todo", title: "To Do", dotColor: "bg-status-todo" },
-  { status: "in_progress", title: "In Progress", dotColor: "bg-status-progress" },
-  { status: "in_review", title: "In Review", dotColor: "bg-status-review" },
-  { status: "done", title: "Done", dotColor: "bg-status-done" },
-];
-
-const priorityWeight: Record<TaskPriority, number> = {
-  urgent: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-};
-
-const statusWeight: Record<TaskStatus, number> = {
-  todo: 1,
-  in_progress: 2,
-  in_review: 3,
-  done: 4,
-};
-
-function TasksContent() {
+export default function GlobalTasksPage() {
   const searchParams = useSearchParams();
-  const {
-    tasks,
-    setTasks,
-    addTask,
-    updateTask,
-    deleteTask,
-    moveTaskStatus,
-    applyBatchMutation,
-    filters,
-    setSearchQuery,
-    setPriorityFilter,
-    resetFilters,
-  } = useTaskStore();
-  const { projects, activeWorkspace } = useWorkspaceStore();
-  const { setCreateTaskModalOpen } = useUiStore();
-  const { onEvent, onReconnect } = useRealtime();
-
-  const [isLoading, setIsLoading] = React.useState(tasks.length === 0);
-  const [page, setPage] = React.useState(1);
-  const [hasMore, setHasMore] = React.useState(false);
-  const [totalTasksCount, setTotalTasksCount] = React.useState(0);
-  const [isLoadingMore, setIsLoadingMore] = React.useState(false);
-
   const urlProjectId = searchParams.get("projectId");
   const urlTaskId = searchParams.get("taskId");
   const urlCreate = searchParams.get("create");
 
-  const [selectedProjectFilter, setSelectedProjectFilter] = React.useState<string>(urlProjectId || "all");
-  const [editingTask, setEditingTask] = React.useState<Task | null>(null);
-  const [inspectingTask, setInspectingTask] = React.useState<Task | null>(null);
-  const [defaultColumnStatus, setDefaultColumnStatus] = React.useState<TaskStatus>("todo");
-  const [viewMode, setViewMode] = React.useState<"board" | "list">("board");
+  const { activeWorkspace, projects, setProjects, members, setMembers } = useWorkspaceStore();
+  const { addToast } = useUiStore();
+  const { onEvent, onReconnect } = useRealtime();
 
-  // Sorting state for List View (3-way: asc -> desc -> null)
-  const [sortField, setSortField] = React.useState<"title" | "priority" | "status" | "dueDate" | null>(null);
-  const [sortDirection, setSortDirection] = React.useState<"asc" | "desc" | null>(null);
+  // Active View Mode: board | list | table
+  const [viewMode, setViewMode] = React.useState<ProjectViewMode>("board");
 
-  const handleSort = (field: "title" | "priority" | "status" | "dueDate") => {
-    if (sortField !== field) {
-      setSortField(field);
-      setSortDirection("asc");
-    } else if (sortDirection === "asc") {
-      setSortDirection("desc");
-    } else if (sortDirection === "desc") {
-      setSortField(null);
-      setSortDirection(null);
-    }
-  };
-
-  // --- Realtime Task Live Synchronization ---
-  React.useEffect(() => {
-    const unsubCreate = onEvent("TASK_CREATED", (event) => {
-      const raw = event.payload;
-      if (raw && raw.id) {
-        const task: Task = {
-          id: raw.id,
-          workspaceId: raw.workspaceId,
-          projectId: raw.projectId,
-          phaseId: raw.phaseId || null,
-          phase: raw.phase || null,
-          title: raw.title,
-          description: raw.description || "",
-          status: (raw.status?.toLowerCase() === "blocked" ? "in_review" : raw.status?.toLowerCase() || "todo") as TaskStatus,
-          priority: (raw.priority?.toLowerCase() || "medium") as TaskPriority,
-          assigneeId: raw.assigneeId || "",
-          dueDate: raw.dueDate ? raw.dueDate.split("T")[0] : "",
-          order: raw.order || 0,
-          subtasks: raw.subtasks || [],
-          tags: raw.tags || [],
-          createdAt: raw.createdAt,
-          updatedAt: raw.updatedAt,
-        };
-        addTask(task);
-        apiClient.invalidate("/api/tasks");
-      }
-    });
-
-    const unsubUpdate = onEvent("TASK_UPDATED", (event) => {
-      const raw = event.payload;
-      if (raw && raw.id) {
-        const updates: Partial<Task> = {
-          ...(raw.title !== undefined && { title: raw.title }),
-          ...(raw.description !== undefined && { description: raw.description }),
-          ...(raw.status !== undefined && {
-            status: (raw.status.toLowerCase() === "blocked" ? "in_review" : raw.status.toLowerCase()) as TaskStatus,
-          }),
-          ...(raw.priority !== undefined && {
-            priority: (raw.priority.toLowerCase()) as TaskPriority,
-          }),
-          ...(raw.assigneeId !== undefined && { assigneeId: raw.assigneeId }),
-          ...(raw.dueDate !== undefined && { dueDate: raw.dueDate ? raw.dueDate.split("T")[0] : "" }),
-          ...(raw.phaseId !== undefined && { phaseId: raw.phaseId }),
-          ...(raw.phase !== undefined && { phase: raw.phase }),
-          ...(raw.subtasks !== undefined && { subtasks: raw.subtasks }),
-          ...(raw.tags !== undefined && { tags: raw.tags }),
-          ...(raw.updatedAt !== undefined && { updatedAt: raw.updatedAt }),
-        };
-        updateTask(raw.id, updates);
-        setInspectingTask((prev) => (prev && prev.id === raw.id ? { ...prev, ...updates } : prev));
-        apiClient.invalidate("/api/tasks");
-      }
-    });
-
-    const unsubStatus = onEvent("TASK_STATUS_CHANGED", (event) => {
-      const raw = event.payload;
-      if (raw && raw.taskId && raw.newStatus) {
-        const normalizedStatus = (raw.newStatus.toLowerCase() === "blocked" ? "in_review" : raw.newStatus.toLowerCase()) as TaskStatus;
-        moveTaskStatus(raw.taskId, normalizedStatus, raw.completedAt);
-        setInspectingTask((prev) => (prev && prev.id === raw.taskId ? { ...prev, status: normalizedStatus } : prev));
-        apiClient.invalidate("/api/tasks");
-      }
-    });
-
-    const unsubDelete = onEvent("TASK_DELETED", (event) => {
-      const raw = event.payload;
-      if (raw && raw.id) {
-        deleteTask(raw.id);
-        setInspectingTask((prev) => (prev && prev.id === raw.id ? null : prev));
-        apiClient.invalidate("/api/tasks");
-      }
-    });
-
-    const unsubBatch = onEvent("BATCH_MUTATION", (event) => {
-      const raw = event.payload;
-      if (raw) {
-        applyBatchMutation({
-          tasksCreated: raw.tasksCreated,
-          tasksUpdated: raw.tasksUpdated,
-          tasksDeleted: raw.tasksDeleted,
-        });
-        apiClient.invalidate("/api/tasks");
-      }
-    });
-
-    return () => {
-      unsubCreate();
-      unsubUpdate();
-      unsubStatus();
-      unsubDelete();
-      unsubBatch();
-    };
-  }, [onEvent, addTask, updateTask, deleteTask, moveTaskStatus, applyBatchMutation]);
-
-  React.useEffect(() => {
-    if (urlCreate === "true") {
-      setEditingTask(null);
-      setCreateTaskModalOpen(true);
-    }
-  }, [urlCreate, setCreateTaskModalOpen]);
-
-  React.useEffect(() => {
-    if (urlProjectId) {
-      setSelectedProjectFilter(urlProjectId);
-    }
-  }, [urlProjectId]);
-
-  const loadTasks = React.useCallback(
-    async (targetPage = 1, append = false) => {
-      const activeWsId = activeWorkspace?.id;
-      if (append) {
-        setIsLoadingMore(true);
-      } else {
-        setIsLoading(true);
-      }
-
-      try {
-        const res = await apiClient.getTasks({
-          workspaceId: activeWsId,
-          page: targetPage,
-          limit: 50,
-        });
-
-        // Guard against stale response if workspace switched in-flight
-        if (useWorkspaceStore.getState().activeWorkspace?.id !== activeWsId && activeWsId) {
-          return;
-        }
-
-        if (res.success && Array.isArray(res.data)) {
-          const mapped: Task[] = res.data.map((t: any) => ({
-            id: t.id,
-            workspaceId: t.workspaceId,
-            projectId: t.projectId,
-            phaseId: t.phaseId || null,
-            phase: t.phase || null,
-            title: t.title,
-            description: t.description || "",
-            status: (t.status?.toLowerCase() === "blocked" ? "in_review" : t.status?.toLowerCase() || "todo") as TaskStatus,
-            priority: (t.priority?.toLowerCase() || "medium") as TaskPriority,
-            assigneeId: t.assigneeId || "",
-            dueDate: t.dueDate ? t.dueDate.split("T")[0] : "",
-            order: t.order || 0,
-            subtasks: t.subtasks || [],
-            tags: t.tags || [],
-            createdAt: t.createdAt,
-            updatedAt: t.updatedAt,
-          }));
-
-          if (append) {
-            const currentTasks = useTaskStore.getState().tasks;
-            const existingIds = new Set(currentTasks.map((t) => t.id));
-            const newItems = mapped.filter((t) => !existingIds.has(t.id));
-            setTasks([...currentTasks, ...newItems]);
-          } else {
-            setTasks(mapped);
-          }
-
-          const paginationData = (res as any).pagination;
-          setPage(targetPage);
-          setHasMore(Boolean(paginationData?.hasMore));
-          setTotalTasksCount(paginationData?.total ?? (append ? tasks.length + mapped.length : mapped.length));
-
-          if (urlTaskId) {
-            const found = mapped.find((t: any) => t.id === urlTaskId);
-            if (found) setInspectingTask(found);
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to load tasks from API:", err);
-      } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
-      }
-    },
-    [activeWorkspace?.id, setTasks, urlTaskId, tasks.length]
-  );
-
-  // Initial load and workspace change reload
-  React.useEffect(() => {
-    loadTasks(1, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkspace?.id, urlTaskId]);
-
-  // Realtime reconnect catch-up resynchronization
-  React.useEffect(() => {
-    const unsub = onReconnect(() => {
-      apiClient.invalidate("/api/tasks");
-      loadTasks(1, false);
-    });
-    return unsub;
-  }, [onReconnect, loadTasks]);
-
-  const filteredTasks = tasks.filter((task) => {
-    const matchesSearch =
-      (task.title || "").toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
-      (task.description || "").toLowerCase().includes(filters.searchQuery.toLowerCase());
-    const matchesPriority =
-      filters.priorityFilter === "all" || task.priority === filters.priorityFilter;
-    const matchesProject =
-      selectedProjectFilter === "all" || task.projectId === selectedProjectFilter;
-    return matchesSearch && matchesPriority && matchesProject;
+  // Shared Filters State
+  const [filters, setFilters] = React.useState<SharedFilterState>({
+    search: "",
+    status: "all",
+    priority: "all",
+    assigneeId: "all",
+    phaseId: "all",
+    projectId: urlProjectId || "all",
   });
 
-  const sortedTasks = React.useMemo(() => {
-    if (!sortField || !sortDirection) return filteredTasks;
+  // Authoritative Data State
+  const [boardData, setBoardData] = React.useState<BoardViewData | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-    return [...filteredTasks].sort((a, b) => {
-      let comparison = 0;
+  // Task Inspection & Creation State
+  const [inspectingTask, setInspectingTask] = React.useState<Task | null>(null);
+  const [editingTask, setEditingTask] = React.useState<Task | null>(null);
+  const [isTaskModalOpen, setIsTaskModalOpen] = React.useState(urlCreate === "true");
+  const [defaultTaskStatus, setDefaultTaskStatus] = React.useState<TaskStatus>("todo");
 
-      if (sortField === "title") {
-        comparison = a.title.localeCompare(b.title);
-      } else if (sortField === "priority") {
-        const pA = priorityWeight[a.priority] || 0;
-        const pB = priorityWeight[b.priority] || 0;
-        comparison = pA - pB;
-      } else if (sortField === "status") {
-        const sA = statusWeight[a.status] || 0;
-        const sB = statusWeight[b.status] || 0;
-        comparison = sA - sB;
-      } else if (sortField === "dueDate") {
-        const dA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-        const dB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-        comparison = dA - dB;
+  // Multi-Selection State for Table View Batch Operations
+  const [selectedTaskIds, setSelectedTaskIds] = React.useState<string[]>([]);
+  const [isBatchMutating, setIsBatchMutating] = React.useState(false);
+
+  // 1. Load Authoritative Workspace Tasks
+  const loadTasks = React.useCallback(async (bypassCache = false) => {
+    if (!activeWorkspace?.id) return;
+    try {
+      setError(null);
+      const res = await apiClient.getTasks(
+        {
+          workspaceId: activeWorkspace.id,
+          view: "board",
+        },
+        { bypassCache }
+      );
+
+      if (res.success && res.data) {
+        setBoardData(res.data);
+      } else {
+        setError(res.error || "Failed to load tasks");
+      }
+    } catch (err: any) {
+      console.error("Failed to load workspace tasks:", err);
+      setError(err?.message || "Failed to load tasks");
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [activeWorkspace?.id]);
+
+  // 2. Load Workspace Projects if empty
+  const loadProjects = React.useCallback(async () => {
+    if (!activeWorkspace?.id) return;
+    try {
+      const res = await apiClient.getProjects({ workspaceId: activeWorkspace.id });
+      if (res.success && Array.isArray(res.data)) {
+        setProjects(res.data);
+      }
+    } catch (err) {
+      console.warn("Failed to load projects:", err);
+    }
+  }, [activeWorkspace?.id, setProjects]);
+
+  // 3. Load Workspace Members if empty
+  const loadMembers = React.useCallback(async () => {
+    if (!activeWorkspace?.id) return;
+    try {
+      const res = await apiClient.getTeamMembers(activeWorkspace.id);
+      if (res.success && Array.isArray(res.data)) {
+        setMembers(res.data);
+      }
+    } catch (err) {
+      console.warn("Failed to load team members:", err);
+    }
+  }, [activeWorkspace?.id, setMembers]);
+
+  // Initial Data Fetching
+  React.useEffect(() => {
+    if (activeWorkspace?.id) {
+      loadTasks();
+      if (projects.length === 0) loadProjects();
+      if (members.length === 0) loadMembers();
+    }
+  }, [activeWorkspace?.id, loadTasks, loadProjects, loadMembers, projects.length, members.length]);
+
+  // Flatten all tasks across board columns into a single flat list
+  const allTasks = React.useMemo(() => {
+    if (!boardData?.columns) return [];
+    const list: any[] = [];
+    Object.values(boardData.columns).forEach((col) => {
+      if (Array.isArray(col.tasks)) {
+        list.push(...col.tasks);
+      }
+    });
+    return list;
+  }, [boardData]);
+
+  // Handle URL Task Parameter (deep-link to inspect task with graceful not-found fallback)
+  const [hasCheckedDeepLink, setHasCheckedDeepLink] = React.useState(false);
+
+  React.useEffect(() => {
+    if (urlTaskId && !isLoading && allTasks.length > 0 && !hasCheckedDeepLink) {
+      const found = allTasks.find((t) => t.id === urlTaskId);
+      if (found) {
+        setInspectingTask(found);
+      } else {
+        addToast({
+          title: "Task Not Found",
+          description: "The linked task could not be found or has been removed.",
+          variant: "warning",
+        });
+      }
+      setHasCheckedDeepLink(true);
+    }
+  }, [urlTaskId, isLoading, allTasks, hasCheckedDeepLink, inspectingTask, addToast]);
+
+  // Client-side filtering across authoritative tasks
+  const filteredTasks = React.useMemo(() => {
+    return allTasks.filter((t) => {
+      // Project filter
+      if (filters.projectId && filters.projectId !== "all") {
+        const pId = t.project?.id || t.projectId;
+        if (pId !== filters.projectId) return false;
       }
 
-      return sortDirection === "desc" ? -comparison : comparison;
-    });
-  }, [filteredTasks, sortField, sortDirection]);
+      // Status filter
+      if (filters.status && filters.status !== "all") {
+        const st = (t.status || "").toLowerCase();
+        if (st !== filters.status.toLowerCase()) return false;
+      }
 
-  const handleOpenNewTask = (status: TaskStatus = "todo") => {
-    setDefaultColumnStatus(status);
-    setEditingTask(null);
-    setCreateTaskModalOpen(true);
+      // Priority filter
+      if (filters.priority && filters.priority !== "all") {
+        const pr = (t.priority || "").toLowerCase();
+        if (pr !== filters.priority.toLowerCase()) return false;
+      }
+
+      // Assignee filter
+      if (filters.assigneeId && filters.assigneeId !== "all") {
+        const aId = t.assignee?.id || t.assigneeId;
+        if (aId !== filters.assigneeId) return false;
+      }
+
+      // Phase filter
+      if (filters.phaseId && filters.phaseId !== "all") {
+        const phId = t.phase?.id || t.phaseId;
+        if (phId !== filters.phaseId) return false;
+      }
+
+      // Text search
+      if (filters.search.trim()) {
+        const q = filters.search.toLowerCase();
+        const matchTitle = (t.title || "").toLowerCase().includes(q);
+        const matchProject = (t.project?.name || "").toLowerCase().includes(q);
+        if (!matchTitle && !matchProject) return false;
+      }
+
+      return true;
+    });
+  }, [allTasks, filters]);
+
+  // Available phases derived from current project filter
+  const availablePhases = React.useMemo(() => {
+    if (filters.projectId && filters.projectId !== "all") {
+      const selectedProj = projects.find((p) => p.id === filters.projectId);
+      if (selectedProj && Array.isArray((selectedProj as any).phases)) {
+        return (selectedProj as any).phases;
+      }
+    }
+    // Aggregate all unique phases present in tasks
+    const phaseMap = new Map<string, { id: string; name: string }>();
+    for (const t of allTasks) {
+      if (t.phase?.id && t.phase?.name) {
+        phaseMap.set(t.phase.id, { id: t.phase.id, name: t.phase.name });
+      }
+    }
+    return Array.from(phaseMap.values());
+  }, [filters.projectId, projects, allTasks]);
+
+  // Hierarchical project groups for List View
+  const projectGroups: ProjectGroupData[] = React.useMemo(() => {
+    const groupsMap = new Map<string, ProjectGroupData>();
+
+    for (const t of filteredTasks) {
+      const projId = t.project?.id || t.projectId || "unassigned";
+      const projName = t.project?.name || "Independent Tasks";
+      const projColor = t.project?.color || "#64748b";
+
+      if (!groupsMap.has(projId)) {
+        groupsMap.set(projId, {
+          project: { id: projId, name: projName, color: projColor },
+          phases: [],
+          ungroupedTasks: [],
+          totalTasks: 0,
+          completedTasks: 0,
+        });
+      }
+
+      const group = groupsMap.get(projId)!;
+      group.totalTasks++;
+      if ((t.status || "").toLowerCase() === "done") {
+        group.completedTasks++;
+      }
+
+      const phaseId = t.phase?.id || t.phaseId;
+      const phaseName = t.phase?.name;
+
+      if (phaseId && phaseName) {
+        let phGroup = group.phases.find((p) => p.id === phaseId);
+        if (!phGroup) {
+          phGroup = {
+            id: phaseId,
+            name: phaseName,
+            tasks: [],
+            totalTasks: 0,
+            completedTasks: 0,
+          };
+          group.phases.push(phGroup);
+        }
+        phGroup.tasks.push(t);
+        phGroup.totalTasks++;
+        if ((t.status || "").toLowerCase() === "done") {
+          phGroup.completedTasks++;
+        }
+      } else {
+        group.ungroupedTasks.push(t);
+      }
+    }
+
+    return Array.from(groupsMap.values());
+  }, [filteredTasks]);
+
+  const isFiltered =
+    Boolean(filters.search.trim()) ||
+    filters.status !== "all" ||
+    filters.priority !== "all" ||
+    filters.assigneeId !== "all" ||
+    filters.phaseId !== "all" ||
+    filters.projectId !== "all";
+
+  // Realtime Integration
+  React.useEffect(() => {
+    const unsubs = [
+      onEvent("TASK_CREATED", () => {
+        apiClient.invalidate("/api/tasks");
+        loadTasks(true);
+      }),
+      onEvent("TASK_UPDATED", () => {
+        apiClient.invalidate("/api/tasks");
+        loadTasks(true);
+      }),
+      onEvent("TASK_STATUS_CHANGED", () => {
+        apiClient.invalidate("/api/tasks");
+        loadTasks(true);
+      }),
+      onEvent("TASK_DELETED", () => {
+        apiClient.invalidate("/api/tasks");
+        loadTasks(true);
+      }),
+      onEvent("PROJECT_UPDATED", () => {
+        apiClient.invalidate("/api/projects");
+        loadProjects();
+      }),
+    ];
+
+    return () => {
+      unsubs.forEach((unsub) => unsub && unsub());
+    };
+  }, [onEvent, loadTasks, loadProjects]);
+
+  React.useEffect(() => {
+    return onReconnect(() => {
+      apiClient.invalidate("/api/tasks");
+      loadTasks(true);
+    });
+  }, [onReconnect, loadTasks]);
+
+  // Task Mutations
+  const handleStatusChange = async (taskId: string, nextStatus: TaskStatus) => {
+    // Optimistic status update in boardData
+    setBoardData((prev) => {
+      if (!prev) return prev;
+      const nextCols = { ...prev.columns };
+
+      let movedTask: any = null;
+      for (const colKey of Object.keys(nextCols)) {
+        const col = nextCols[colKey];
+        const idx = col.tasks.findIndex((t) => t.id === taskId);
+        if (idx !== -1) {
+          movedTask = { ...col.tasks[idx], status: nextStatus };
+          nextCols[colKey] = {
+            ...col,
+            count: Math.max(0, col.count - 1),
+            tasks: col.tasks.filter((t) => t.id !== taskId),
+          };
+          break;
+        }
+      }
+
+      if (movedTask) {
+        const targetColKey = nextStatus.toUpperCase();
+        const lowerColKey = nextStatus.toLowerCase();
+        const targetKey = nextCols[targetColKey] ? targetColKey : lowerColKey;
+
+        if (nextCols[targetKey]) {
+          nextCols[targetKey] = {
+            ...nextCols[targetKey],
+            count: nextCols[targetKey].count + 1,
+            tasks: [movedTask, ...nextCols[targetKey].tasks],
+          };
+        }
+      }
+
+      return { ...prev, columns: nextCols };
+    });
+
+    try {
+      const res = await apiClient.updateTask(taskId, { status: nextStatus });
+      if (!res.success) {
+        addToast({ title: "Failed to update status", variant: "danger" });
+        loadTasks(true);
+      } else {
+        addToast({
+          title: "Task status updated",
+          description: `Moved to ${nextStatus.replace("_", " ")}`,
+          variant: "success",
+        });
+      }
+    } catch (err) {
+      addToast({ title: "Network error updating task", variant: "danger" });
+      loadTasks(true);
+    }
   };
+
+  const handleStatusToggle = async (taskId: string, currentStatus: string) => {
+    const isDone = (currentStatus || "").toLowerCase() === "done";
+    const nextStatus: TaskStatus = isDone ? "todo" : "done";
+    await handleStatusChange(taskId, nextStatus);
+  };
+
+  // Batch Operations
+  const handleToggleSelectTask = (taskId: string) => {
+    setSelectedTaskIds((prev) =>
+      prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]
+    );
+  };
+
+  const handleSelectAllTasks = (taskIds: string[]) => {
+    setSelectedTaskIds(taskIds);
+  };
+
+  const handleBatchStatus = async (status: TaskStatus) => {
+    if (selectedTaskIds.length === 0 || !activeWorkspace?.id) return;
+    setIsBatchMutating(true);
+    try {
+      const res = await apiClient.batchMutateTasks(
+        "STATUS",
+        selectedTaskIds,
+        { status },
+        activeWorkspace.id
+      );
+      if (res.success) {
+        addToast({
+          title: "Batch status updated",
+          description: `Updated ${selectedTaskIds.length} tasks to ${status.replace("_", " ")}`,
+          variant: "success",
+        });
+        setSelectedTaskIds([]);
+        loadTasks(true);
+      } else {
+        addToast({ title: res.error || "Batch update failed", variant: "danger" });
+      }
+    } catch (err: any) {
+      addToast({ title: err?.message || "Batch update failed", variant: "danger" });
+    } finally {
+      setIsBatchMutating(false);
+    }
+  };
+
+  const handleBatchPriority = async (priority: TaskPriority) => {
+    if (selectedTaskIds.length === 0 || !activeWorkspace?.id) return;
+    setIsBatchMutating(true);
+    try {
+      const res = await apiClient.batchMutateTasks(
+        "PRIORITY",
+        selectedTaskIds,
+        { priority },
+        activeWorkspace.id
+      );
+      if (res.success) {
+        addToast({
+          title: "Batch priority updated",
+          description: `Updated ${selectedTaskIds.length} tasks to ${priority}`,
+          variant: "success",
+        });
+        setSelectedTaskIds([]);
+        loadTasks(true);
+      } else {
+        addToast({ title: res.error || "Batch update failed", variant: "danger" });
+      }
+    } catch (err: any) {
+      addToast({ title: err?.message || "Batch update failed", variant: "danger" });
+    } finally {
+      setIsBatchMutating(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadTasks(true);
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      search: "",
+      status: "all",
+      priority: "all",
+      assigneeId: "all",
+      phaseId: "all",
+      projectId: "all",
+    });
+  };
+
+  if (isLoading && !boardData) {
+    return <TasksLoading />;
+  }
 
   return (
     <div className="relative flex flex-col gap-6">
-      <AnimatedGrid />
-
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
+      {/* 1. Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-mono">
               Tasks
             </h1>
-            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-mono font-bold text-primary">
-              {filteredTasks.length} Tasks
+            <span className="rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
+              Workspace
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Manage, schedule, and track tasks across your workspace delivery pipelines.
+          <p className="mt-1 text-xs text-muted-foreground">
+            Manage, track, and orchestrate delivery across all projects in the workspace.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* View Mode Switcher (Board | List) */}
-          <div className="flex items-center rounded-lg border border-border bg-card p-1 shadow-xs">
-            <button
-              onClick={() => setViewMode("board")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-                viewMode === "board"
-                  ? "bg-primary text-primary-foreground font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              <span>Board</span>
-            </button>
-            <button
-              onClick={() => setViewMode("list")}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-                viewMode === "list"
-                  ? "bg-primary text-primary-foreground font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <CheckSquare className="h-3.5 w-3.5" />
-              <span>List</span>
-            </button>
-          </div>
-
-          <MagnetButton
-            size="sm"
-            onClick={() => handleOpenNewTask("todo")}
-            className="gap-1.5 text-xs font-semibold"
-          >
-            <Plus className="h-4 w-4" />
-            <span>New Task</span>
-          </MagnetButton>
-        </div>
-      </div>
-
-      {/* Search & Filter Controls Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3.5 shadow-xs">
-        <div className="flex flex-1 items-center gap-2.5">
-          {/* Search */}
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Filter tasks by title or keyword..."
-              value={filters.searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8.5 w-full rounded-md border border-border bg-card pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-            />
-          </div>
-
-          {/* Project Filter */}
-          <select
-            value={selectedProjectFilter}
-            onChange={(e) => setSelectedProjectFilter(e.target.value)}
-            className="h-8.5 rounded-md border border-border bg-card px-2.5 text-xs text-foreground focus:border-primary focus:outline-none"
-          >
-            <option value="all">All Projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Priority Filter Pills & Reset */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-md border border-border bg-card p-0.5 text-xs">
-            <button
-              onClick={() => setPriorityFilter("all")}
-              className={cn(
-                "rounded px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
-                filters.priorityFilter === "all"
-                  ? "bg-primary text-primary-foreground font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setPriorityFilter("urgent")}
-              className={cn(
-                "rounded px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
-                filters.priorityFilter === "urgent"
-                  ? "bg-priority-urgent/20 text-priority-urgent font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Urgent
-            </button>
-            <button
-              onClick={() => setPriorityFilter("high")}
-              className={cn(
-                "rounded px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
-                filters.priorityFilter === "high"
-                  ? "bg-priority-high/20 text-priority-high font-semibold"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              High
-            </button>
-          </div>
-
-          {(filters.searchQuery ||
-            filters.priorityFilter !== "all" ||
-            selectedProjectFilter !== "all") && (
-            <button
-              onClick={() => {
-                resetFilters();
-                setSelectedProjectFilter("all");
-              }}
-              className="flex h-8.5 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-              title="Reset all filters"
-            >
-              <RotateCcw className="h-3 w-3" />
-              <span className="hidden sm:inline">Reset</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Mode 1: Board View (Exactly 4 Columns) */}
-      {viewMode === "board" && (
-        isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start pb-6" aria-busy="true">
-            {["To Do", "In Progress", "In Review", "Done"].map((colTitle, colIdx) => (
-              <div
-                key={colIdx}
-                className="flex flex-col rounded-xl border border-border/70 bg-card/60 p-3 min-h-[480px] shadow-xs"
-              >
-                <div className="flex items-center justify-between pb-3 border-b border-border/40">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-2.5 w-2.5 rounded-full" />
-                    <span className="text-xs font-bold text-muted-foreground">{colTitle}</span>
-                  </div>
-                  <Skeleton className="h-4 w-6 rounded-full" />
-                </div>
-                <div className="mt-3 space-y-3 flex-1">
-                  {[1, 2, 3].map((cardIdx) => (
-                    <div
-                      key={cardIdx}
-                      className="rounded-xl border border-border bg-card p-3.5 space-y-2.5 shadow-xs"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <Skeleton className="h-4 w-3/4 rounded" />
-                        <Skeleton className="h-4 w-12 rounded-full shrink-0" />
-                      </div>
-                      <Skeleton className="h-3 w-1/2 rounded" />
-                      <div className="flex items-center justify-between pt-2 border-t border-border/40">
-                        <Skeleton className="h-3 w-16 rounded" />
-                        <SkeletonAvatar size="xs" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex gap-4 overflow-x-auto pb-6">
-            {columnsConfig.map((col) => {
-              const colTasks = filteredTasks.filter((t) => t.status === col.status);
-              return (
-                <KanbanColumn
-                  key={col.status}
-                  status={col.status}
-                  title={col.title}
-                  dotColor={col.dotColor}
-                  tasks={colTasks}
-                  onAddTask={handleOpenNewTask}
-                  onEditTask={(task) => setEditingTask(task)}
-                  onSelectTask={(task) => setInspectingTask(task)}
-                />
-              );
-            })}
-          </div>
-        )
-      )}
-
-      {/* Mode 2: List View with Interactive Sorting */}
-      {viewMode === "list" && (
-        isLoading ? (
-          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs p-4 space-y-3" aria-busy="true">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/40 last:border-0">
-                <div className="space-y-1.5 flex-1 min-w-0">
-                  <Skeleton className="h-4 w-52 rounded" />
-                  <Skeleton className="h-3 w-32 rounded" />
-                </div>
-                <div className="flex items-center gap-4 shrink-0">
-                  <Skeleton className="h-5 w-16 rounded-full" />
-                  <Skeleton className="h-5 w-20 rounded-full" />
-                  <Skeleton className="h-4 w-24 rounded" />
-                  <SkeletonAvatar size="xs" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wider font-semibold text-muted-foreground select-none">
-                    <th
-                      onClick={() => handleSort("title")}
-                      className="py-3 px-4 hover:text-foreground cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span>Task</span>
-                        {sortField === "title" ? (
-                          <span className="text-primary font-bold">{sortDirection === "asc" ? "▲" : "▼"}</span>
-                        ) : (
-                          <span className="text-muted-foreground/40">↕</span>
-                        )}
-                      </div>
-                    </th>
-                    <th className="py-3 px-4">Project</th>
-                    <th className="py-3 px-4">Assignee</th>
-                    <th
-                      onClick={() => handleSort("priority")}
-                      className="py-3 px-4 hover:text-foreground cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span>Priority</span>
-                        {sortField === "priority" ? (
-                          <span className="text-primary font-bold">{sortDirection === "asc" ? "▲" : "▼"}</span>
-                        ) : (
-                          <span className="text-muted-foreground/40">↕</span>
-                        )}
-                      </div>
-                    </th>
-                    <th
-                      onClick={() => handleSort("status")}
-                      className="py-3 px-4 hover:text-foreground cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span>Status</span>
-                        {sortField === "status" ? (
-                          <span className="text-primary font-bold">{sortDirection === "asc" ? "▲" : "▼"}</span>
-                        ) : (
-                          <span className="text-muted-foreground/40">↕</span>
-                        )}
-                      </div>
-                    </th>
-                    <th
-                      onClick={() => handleSort("dueDate")}
-                      className="py-3 px-4 hover:text-foreground cursor-pointer transition-colors"
-                    >
-                    <div className="flex items-center gap-1.5">
-                      <span>Due Date</span>
-                      {sortField === "dueDate" ? (
-                        <span className="text-primary font-bold">{sortDirection === "asc" ? "▲" : "▼"}</span>
-                      ) : (
-                        <span className="text-muted-foreground/40">↕</span>
-                      )}
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {sortedTasks.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center text-muted-foreground">
-                      No tasks found matching current filters.
-                    </td>
-                  </tr>
-                ) : (
-                  sortedTasks.map((task) => {
-                    const taskProject = projects.find((p) => p.id === task.projectId);
-                    return (
-                      <tr
-                        key={task.id}
-                        onClick={() => setInspectingTask(task)}
-                        className="hover:bg-muted/30 transition-colors cursor-pointer group"
-                      >
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                            {task.title}
-                          </div>
-                          {task.description && (
-                            <div className="text-[11px] text-muted-foreground truncate max-w-xs">
-                              {task.description}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          {taskProject ? (
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className="h-2 w-2 rounded-full shrink-0"
-                                style={{ backgroundColor: taskProject.color || "#0284C7" }}
-                              />
-                              <span className="font-medium text-foreground truncate max-w-[120px]">
-                                {taskProject.name}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="text-foreground">
-                            {task.assigneeId || "Unassigned"}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 text-[10px] font-mono font-medium uppercase",
-                              task.priority === "urgent"
-                                ? "bg-priority-urgent/10 text-priority-urgent border-priority-urgent/30"
-                                : task.priority === "high"
-                                ? "bg-priority-high/10 text-priority-high border-priority-high/30"
-                                : "bg-priority-medium/10 text-priority-medium border-priority-medium/30"
-                            )}
-                          >
-                            {task.priority}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 text-[10px] font-mono font-medium uppercase",
-                              task.status === "done"
-                                ? "bg-status-done/10 text-status-done border-status-done/30"
-                                : task.status === "in_progress"
-                                ? "bg-status-progress/10 text-status-progress border-status-progress/30"
-                                : task.status === "in_review"
-                                ? "bg-status-review/10 text-status-review border-status-review/30"
-                                : "bg-status-todo/10 text-status-todo border-status-todo/30"
-                            )}
-                          >
-                            {task.status.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-mono text-[11px]">
-                          {task.dueDate ? (() => {
-                            const dueInfo = getDueDateState(task.dueDate, task.status);
-                            return (
-                              <span
-                                className={cn(
-                                  "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-mono border",
-                                  dueInfo.badgeClass
-                                )}
-                                title={task.dueDate}
-                              >
-                                {dueInfo.label}
-                              </span>
-                            );
-                          })() : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        )
-      )}
-
-      {/* Pagination / Load More Footer */}
-      {hasMore && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs shadow-xs text-xs text-muted-foreground animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <span>
-              Menampilkan <strong className="text-foreground font-semibold">{tasks.length}</strong> dari{" "}
-              <strong className="text-foreground font-semibold">{totalTasksCount}</strong> total task
-            </span>
-          </div>
+        <div className="flex items-center gap-2.5">
           <Button
             variant="outline"
             size="sm"
-            disabled={isLoadingMore}
-            onClick={() => loadTasks(page + 1, true)}
-            className="gap-2 text-xs h-8 px-4 font-medium hover:border-primary/50 cursor-pointer"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="h-8 gap-1.5 text-xs border-border hover:bg-card cursor-pointer"
+            title="Synchronize tasks state"
           >
-            {isLoadingMore ? (
-              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            ) : null}
-            Muat Task Berikutnya ({totalTasksCount - tasks.length > 0 ? `${totalTasksCount - tasks.length} tersisa` : "Lebih Banyak"})
+            <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin text-primary")} />
+            <span>Sync</span>
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => {
+              setDefaultTaskStatus("todo");
+              setEditingTask(null);
+              setIsTaskModalOpen(true);
+            }}
+            className="h-8 gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer shadow-xs"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>New Task</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* 2. Error Banner */}
+      {error && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => loadTasks(true)} className="h-7 text-xs">
+            Retry
           </Button>
         </div>
       )}
 
-      {/* Task Modal (Create / Edit) */}
-      <TaskModal
-        editingTask={editingTask}
-        defaultStatus={defaultColumnStatus}
-        onClose={() => setEditingTask(null)}
+      {/* 3. Shared Task Toolbar */}
+      <SharedTaskToolbar
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        filters={filters}
+        onFilterChange={(updates) => setFilters((prev) => ({ ...prev, ...updates }))}
+        onResetFilters={handleResetFilters}
+        members={members}
+        phases={availablePhases}
+        projects={projects}
+        totalTasks={allTasks.length}
+        filteredTasksCount={filteredTasks.length}
       />
 
-      {/* Task Detail Slide-over Drawer */}
+      {/* 4. Main Multi-View Task Environment */}
+      {allTasks.length === 0 ? (
+        /* Empty Workspace State */
+        <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center space-y-3">
+          <Layers className="h-9 w-9 mx-auto text-muted-foreground/60" />
+          <h3 className="text-sm font-bold text-foreground">No Tasks in Workspace</h3>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            Get started by creating your first task to plan delivery across projects.
+          </p>
+          <Button
+            size="sm"
+            onClick={() => {
+              setDefaultTaskStatus("todo");
+              setEditingTask(null);
+              setIsTaskModalOpen(true);
+            }}
+            className="h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
+          >
+            + Create First Task
+          </Button>
+        </div>
+      ) : filteredTasks.length === 0 && isFiltered ? (
+        /* Filtered Empty State */
+        <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center space-y-3">
+          <SlidersHorizontal className="h-8 w-8 mx-auto text-muted-foreground/60" />
+          <h3 className="text-sm font-bold text-foreground">No matching tasks</h3>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            No tasks match the currently applied filters or search criteria.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetFilters}
+            className="h-8 text-xs cursor-pointer"
+          >
+            Reset Filters
+          </Button>
+        </div>
+      ) : (
+        <>
+          {/* Board View */}
+          {viewMode === "board" && (
+            <ProjectBoardView
+              boardData={boardData}
+              onSelectTask={(t) => setInspectingTask(t)}
+              onAddTask={(st) => {
+                setDefaultTaskStatus(st || "todo");
+                setEditingTask(null);
+                setIsTaskModalOpen(true);
+              }}
+              onStatusChange={handleStatusChange}
+              filteredTasks={filteredTasks}
+              isFiltered={isFiltered}
+            />
+          )}
+
+          {/* List View */}
+          {viewMode === "list" && (
+            <ProjectListView
+              projectGroups={projectGroups}
+              onSelectTask={(t) => setInspectingTask(t)}
+              onAddTask={(_phaseId, pId) => {
+                setDefaultTaskStatus("todo");
+                setEditingTask(null);
+                setIsTaskModalOpen(true);
+              }}
+              onStatusToggle={handleStatusToggle}
+            />
+          )}
+
+          {/* Table View */}
+          {viewMode === "table" && (
+            <ProjectTableView
+              tasks={filteredTasks}
+              onSelectTask={(t) => setInspectingTask(t)}
+              onStatusToggle={handleStatusToggle}
+              showProject={true}
+              selectedTaskIds={selectedTaskIds}
+              onToggleSelectTask={handleToggleSelectTask}
+              onSelectAllTasks={handleSelectAllTasks}
+            />
+          )}
+        </>
+      )}
+
+      {/* 5. Floating Batch Operations Bar (for Table View) */}
+      {selectedTaskIds.length > 0 && viewMode === "table" && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-xl border border-border bg-card/95 backdrop-blur-md px-4 py-2.5 shadow-2xl animate-in fade-in slide-in-from-bottom-2">
+          <span className="text-xs font-mono font-semibold text-foreground whitespace-nowrap">
+            {selectedTaskIds.length} selected
+          </span>
+          <div className="h-4 w-px bg-border" />
+
+          {/* Bulk Status Dropdown */}
+          <select
+            disabled={isBatchMutating}
+            onChange={(e) => {
+              if (e.target.value) {
+                handleBatchStatus(e.target.value as TaskStatus);
+                e.target.value = "";
+              }
+            }}
+            defaultValue=""
+            className="h-7 rounded-md border border-border bg-surface-muted px-2 text-xs text-foreground focus:outline-none cursor-pointer"
+            aria-label="Batch change status"
+          >
+            <option value="" disabled>
+              Set Status...
+            </option>
+            <option value="backlog">Backlog</option>
+            <option value="todo">To Do</option>
+            <option value="in_progress">In Progress</option>
+            <option value="in_review">In Review</option>
+            <option value="blocked">Blocked</option>
+            <option value="done">Done</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+
+          {/* Bulk Priority Dropdown */}
+          <select
+            disabled={isBatchMutating}
+            onChange={(e) => {
+              if (e.target.value) {
+                handleBatchPriority(e.target.value as TaskPriority);
+                e.target.value = "";
+              }
+            }}
+            defaultValue=""
+            className="h-7 rounded-md border border-border bg-surface-muted px-2 text-xs text-foreground focus:outline-none cursor-pointer"
+            aria-label="Batch change priority"
+          >
+            <option value="" disabled>
+              Set Priority...
+            </option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+
+          {/* Clear Selection Button */}
+          <button
+            onClick={() => setSelectedTaskIds([])}
+            className="rounded p-1 text-muted-foreground hover:text-foreground cursor-pointer text-xs"
+            title="Clear selection"
+            aria-label="Clear selection"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* 6. Task Inspection Drawer (Authoritative TaskDetailDrawer reuse) */}
       <TaskDetailDrawer
         task={inspectingTask}
         onClose={() => setInspectingTask(null)}
-        onEdit={(task) => {
+        onEdit={(t) => {
           setInspectingTask(null);
-          setEditingTask(task);
+          setEditingTask(t);
+          setIsTaskModalOpen(true);
         }}
       />
-    </div>
-  );
-}
 
-export default function TasksPage() {
-  return (
-    <React.Suspense fallback={<TasksLoading />}>
-      <TasksContent />
-    </React.Suspense>
+      {/* 7. Task Creation/Edit Modal (Authoritative TaskModal reuse) */}
+      {isTaskModalOpen && (
+        <TaskModal
+          editingTask={editingTask}
+          defaultStatus={defaultTaskStatus}
+          onClose={() => {
+            setIsTaskModalOpen(false);
+            setEditingTask(null);
+            loadTasks(true);
+          }}
+        />
+      )}
+    </div>
   );
 }

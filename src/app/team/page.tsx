@@ -1,15 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Users2, UserPlus, Search, Shield, Filter } from "lucide-react";
+import { Users2, UserPlus, Search, LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import { useWorkspaceStore, useUiStore } from "@/store";
 import { WorkspaceMember, MemberRole } from "@/types";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
-import { MagnetButton } from "@/components/ui/magnet-button";
 import { MemberCard } from "@/components/team/MemberCard";
+import { MemberTableView } from "@/components/team/MemberTableView";
+import { MemberDetailDrawer } from "@/components/team/MemberDetailDrawer";
 import { WorkloadVisualizer } from "@/components/team/WorkloadVisualizer";
-import { AnimatedGrid } from "@/components/ui/animated-grid";
 import { Skeleton, SkeletonCard, SkeletonAvatar } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/apiClient";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -26,8 +26,13 @@ export default function TeamPage() {
   const { addToast } = useUiStore();
   const { can } = usePermissions();
   const { onEvent, onReconnect } = useRealtime();
+
   const [isLoading, setIsLoading] = React.useState(members.length === 0);
   const [isInviteModalOpen, setIsInviteModalOpen] = React.useState(false);
+  const [selectedMember, setSelectedMember] = React.useState<WorkspaceMember | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+
+  const [viewMode, setViewMode] = React.useState<"grid" | "table">("grid");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [roleFilter, setRoleFilter] = React.useState<string>("all");
   const [workloadFilter, setWorkloadFilter] = React.useState<"all" | "optimal" | "high" | "overloaded">("all");
@@ -53,8 +58,19 @@ export default function TeamPage() {
           joinedAt: m.joinedAt,
           assignedTasksCount: m.activeTaskCount || m.totalAssignedCount || 0,
           workloadScore: m.workloadScore || 0,
+          capacityStatus: m.capacityStatus,
+          activeTaskCount: m.activeTaskCount,
+          completedTaskCount: m.completedTaskCount,
+          totalAssignedCount: m.totalAssignedCount,
+          projects: m.projects,
         }));
         setMembers(mappedMembers);
+
+        // Keep selectedMember up-to-date if drawer is open
+        setSelectedMember((curr) => {
+          if (!curr) return null;
+          return mappedMembers.find((m) => m.id === curr.id) || null;
+        });
       }
     } catch (err) {
       console.warn("Failed to load team members from API:", err);
@@ -134,11 +150,16 @@ export default function TeamPage() {
           joinedAt: m.joinedAt || new Date().toISOString(),
           assignedTasksCount: 0,
           workloadScore: m.workloadScore || 10,
+          capacityStatus: "OPTIMAL",
+          activeTaskCount: 0,
+          completedTaskCount: 0,
+          totalAssignedCount: 0,
+          projects: [],
         };
         addMember(newMember);
         addToast({
-          title: "Member Invited",
-          description: `Invitation sent to ${newMemberData.email}`,
+          title: "Member Added",
+          description: `${newMemberData.name || newMemberData.email} added to workspace squad.`,
           variant: "success",
         });
         setIsInviteModalOpen(false);
@@ -178,6 +199,7 @@ export default function TeamPage() {
           variant: "success",
         });
       } else {
+        // Rollback
         setMembers(previousMembers);
         addToast({
           title: "Update Failed",
@@ -186,10 +208,12 @@ export default function TeamPage() {
         });
       }
     } catch (err: any) {
+      // Rollback
+      setMembers(previousMembers);
       addToast({
-        title: "Role Updated",
-        description: `Role updated to ${newRole}.`,
-        variant: "success",
+        title: "Update Failed",
+        description: err?.message || "Could not update member role.",
+        variant: "danger",
       });
     }
   };
@@ -216,6 +240,10 @@ export default function TeamPage() {
           description: `Member removed from workspace.`,
           variant: "default",
         });
+        if (selectedMember?.id === memberId) {
+          setIsDrawerOpen(false);
+          setSelectedMember(null);
+        }
       } else {
         setMembers(previousMembers);
         addToast({
@@ -224,13 +252,19 @@ export default function TeamPage() {
           variant: "danger",
         });
       }
-    } catch (err) {
+    } catch (err: any) {
+      setMembers(previousMembers);
       addToast({
-        title: "Member Removed",
-        description: `Member removed from workspace.`,
-        variant: "default",
+        title: "Removal Failed",
+        description: err?.message || "Failed to remove member from workspace.",
+        variant: "danger",
       });
     }
+  };
+
+  const handleSelectMember = (member: WorkspaceMember) => {
+    setSelectedMember(member);
+    setIsDrawerOpen(true);
   };
 
   const filteredMembers = members.filter((m) => {
@@ -252,58 +286,61 @@ export default function TeamPage() {
   });
 
   return (
-    <div className="relative flex flex-col gap-6">
-      <AnimatedGrid />
-
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full pb-12">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
-        <div>
-          <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+              <Users2 className="h-5 w-5" />
+            </div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
               Team & Workload
             </h1>
-            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-mono font-bold text-primary">
-              {filteredMembers.length} Members
+            <span className="rounded-full bg-primary/10 border border-primary/20 px-2.5 py-0.5 text-xs font-mono font-semibold text-primary">
+              {filteredMembers.length} {filteredMembers.length === 1 ? "Member" : "Members"}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Manage squad directory, inspect individual workload capacity, and balance sprint allocations.
+          <p className="text-xs text-muted-foreground">
+            Manage workspace members, inspect capacity allocation, balance workload, and assign squad roles.
           </p>
         </div>
 
-        {can("members.invite") && (
-          <MagnetButton
-            size="sm"
-            onClick={() => setIsInviteModalOpen(true)}
-            className="gap-1.5 text-xs font-semibold"
-          >
-            <UserPlus className="h-4 w-4" />
-            <span>Invite Member</span>
-          </MagnetButton>
-        )}
+        <div className="flex items-center gap-2">
+          {can("members.invite") && (
+            <Button
+              size="sm"
+              onClick={() => setIsInviteModalOpen(true)}
+              className="gap-1.5 text-xs font-semibold shadow-xs"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>Invite Member</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Workload Visualizer Summary */}
       <WorkloadVisualizer members={members} />
 
-      {/* Filter Controls Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3.5 shadow-xs">
-        {/* Search */}
+      {/* Filter & View Mode Controls */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 shadow-xs">
+        {/* Search Input */}
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search member by name or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8.5 w-full rounded-md border border-border bg-surface pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+            className="h-8.5 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary transition-colors"
           />
         </div>
 
-        {/* Filters Group */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        {/* Filter Controls & View Switcher */}
+        <div className="flex items-center gap-2.5 flex-wrap justify-between lg:justify-end">
           {/* Workload Filter Tabs */}
-          <div className="flex items-center rounded-md border border-border bg-surface p-0.5 text-xs">
+          <div className="flex items-center rounded-lg border border-border bg-background p-0.5 text-xs">
             {(
               [
                 { key: "all", label: "All Capacity" },
@@ -316,9 +353,9 @@ export default function TeamPage() {
                 key={tab.key}
                 onClick={() => setWorkloadFilter(tab.key)}
                 className={cn(
-                  "rounded px-2.5 py-1 text-[11px] font-medium transition-colors",
+                  "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
                   workloadFilter === tab.key
-                    ? "bg-primary text-primary-foreground font-semibold"
+                    ? "bg-primary text-primary-foreground font-semibold shadow-xs"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -331,7 +368,7 @@ export default function TeamPage() {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="h-8.5 rounded-md border border-border bg-surface px-2.5 text-xs text-foreground focus:border-primary focus:outline-none"
+            className="h-8.5 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary transition-colors"
           >
             <option value="all">All Roles</option>
             <option value="owner">Owner</option>
@@ -339,40 +376,85 @@ export default function TeamPage() {
             <option value="member">Member</option>
             <option value="viewer">Viewer</option>
           </select>
+
+          {/* View Mode Toggle */}
+          <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
+            <button
+              onClick={() => setViewMode("grid")}
+              title="Grid View"
+              aria-label="Grid View"
+              className={cn(
+                "rounded-md p-1.5 transition-colors cursor-pointer",
+                viewMode === "grid"
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode("table")}
+              title="Table View"
+              aria-label="Table View"
+              className={cn(
+                "rounded-md p-1.5 transition-colors cursor-pointer",
+                viewMode === "table"
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Member Cards Grid */}
+      {/* Member Listing: Grid or Table */}
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" aria-busy="true">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <SkeletonCard key={i} className="p-5 space-y-4">
-              <div className="flex items-start justify-between">
-                <SkeletonAvatar size="lg" />
-                <Skeleton className="h-5 w-16 rounded-full" />
-              </div>
-              <div className="space-y-1">
-                <Skeleton className="h-4 w-32 rounded" />
-                <Skeleton className="h-3 w-40 rounded" />
-              </div>
-              <div className="space-y-1.5 pt-2 border-t border-border/40">
-                <div className="flex justify-between">
-                  <Skeleton className="h-2.5 w-16 rounded" />
-                  <Skeleton className="h-2.5 w-8 rounded" />
+        viewMode === "grid" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" aria-busy="true">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <SkeletonCard key={i} className="p-5 space-y-4">
+                <div className="flex items-start justify-between">
+                  <SkeletonAvatar size="lg" />
+                  <Skeleton className="h-5 w-16 rounded-full" />
                 </div>
-                <Skeleton className="h-1.5 w-full rounded-full" />
-              </div>
-              <div className="flex items-center justify-between pt-1">
-                <Skeleton className="h-3 w-20 rounded" />
-                <Skeleton className="h-7 w-16 rounded-lg" />
-              </div>
-            </SkeletonCard>
-          ))}
-        </div>
+                <div className="space-y-1">
+                  <Skeleton className="h-4 w-32 rounded" />
+                  <Skeleton className="h-3 w-40 rounded" />
+                </div>
+                <div className="space-y-1.5 pt-2 border-t border-border/40">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-2.5 w-16 rounded" />
+                    <Skeleton className="h-2.5 w-8 rounded" />
+                  </div>
+                  <Skeleton className="h-1.5 w-full rounded-full" />
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <Skeleton className="h-3 w-20 rounded" />
+                  <Skeleton className="h-7 w-16 rounded-lg" />
+                </div>
+              </SkeletonCard>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3" aria-busy="true">
+            <Skeleton className="h-9 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+            <Skeleton className="h-12 w-full rounded-lg" />
+          </div>
+        )
       ) : filteredMembers.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center">
-          <p className="text-sm font-medium text-foreground">No team members match this filter</p>
-          <p className="text-xs text-muted-foreground mt-1">Try resetting the workload or role filter.</p>
+        <div className="rounded-2xl border border-dashed border-border bg-card/40 p-12 text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-muted-foreground mb-3">
+            <SlidersHorizontal className="h-5 w-5" />
+          </div>
+          <p className="text-sm font-semibold text-foreground">No team members match this filter</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+            Try adjusting your search keywords, role selection, or workload capacity filter.
+          </p>
           <Button
             variant="outline"
             size="sm"
@@ -386,18 +468,46 @@ export default function TeamPage() {
             Reset Filters
           </Button>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      ) : viewMode === "grid" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredMembers.map((member) => (
             <MemberCard
               key={member.id}
               member={member}
               onRoleChange={handleRoleChange}
               onRemove={handleRemoveMember}
+              onSelectMember={handleSelectMember}
             />
           ))}
         </div>
+      ) : (
+        <MemberTableView
+          members={filteredMembers}
+          onRoleChange={handleRoleChange}
+          onRemove={handleRemoveMember}
+          onSelectMember={handleSelectMember}
+        />
       )}
+
+      {/* Member Detail Drawer */}
+      <MemberDetailDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        member={selectedMember}
+        onRoleChange={async (memberId, newRole) => {
+          await handleRoleChange(memberId, newRole);
+          if (selectedMember && selectedMember.id === memberId) {
+            setSelectedMember({
+              ...selectedMember,
+              role: newRole,
+              user: { ...selectedMember.user, role: newRole },
+            });
+          }
+        }}
+        onRemove={async (memberId) => {
+          await handleRemoveMember(memberId);
+        }}
+      />
 
       {/* Invite Modal */}
       <InviteMemberModal
@@ -408,3 +518,4 @@ export default function TeamPage() {
     </div>
   );
 }
+

@@ -456,9 +456,9 @@ async function runProductionQaTests() {
       blockedCount: 0,
     };
 
-    recordExecutionReceipt(reversibleReceipt);
+    await recordExecutionReceipt(reversibleReceipt);
 
-    const latest = getLatestExecutionReceipt(CONTEXT_A.workspaceId, CONTEXT_A.userId);
+    const latest = await getLatestExecutionReceipt(CONTEXT_A.workspaceId, CONTEXT_A.userId);
     assert(latest?.executionId === "exec_audit_001", "Can retrieve latest execution receipt for active user");
 
     const { plan: undoPlan } = generateUndoPlanFromReceipt(reversibleReceipt, CONTEXT_A);
@@ -474,37 +474,39 @@ async function runProductionQaTests() {
       userId: CONTEXT_A.userId,
       timestamp: new Date().toISOString(),
       status: "SUCCESS",
-      workflowPolicy: "PARTIAL_SUCCESS_ALLOWED",
+      workflowPolicy: "ATOMIC",
       actions: [
         {
           actionId: "act_p_del",
           type: "DELETE_PROJECT",
           status: "SUCCESS",
-          entityId: "prj_wsA_fruit",
+          entityId: "prj_fruit_01",
           entityType: "PROJECT",
-          entityName: "Website Toko Buah",
+          entityName: "Toko Buah",
           isReversible: false,
-          summary: "Deleted Website Toko Buah",
+          summary: "Delete project",
         },
       ],
       reversible: false,
-      summary: "Project deleted",
+      summary: "Deleted project permanently",
       successfulCount: 1,
       failedCount: 0,
       blockedCount: 0,
     };
 
-    assert(isReceiptReversible(irreversibleReceipt) === false, "DELETE_PROJECT verified as irreversible");
-    const { plan: invalidUndo, error: undoErr } = generateUndoPlanFromReceipt(irreversibleReceipt, CONTEXT_A);
-    assert(invalidUndo === undefined, "Undo plan refused for irreversible deletion");
+    await recordExecutionReceipt(irreversibleReceipt);
+    assert(isReceiptReversible(irreversibleReceipt) === false, "isReceiptReversible returns false for irreversible receipt");
+
+    const { error: undoErr } = generateUndoPlanFromReceipt(irreversibleReceipt, CONTEXT_A);
+    assert(undoErr !== undefined, "Attempt to undo irreversible receipt is blocked with error");
     assert(undoErr?.includes("permanen") === true, "Refusal error clarifies permanent operation");
 
     // C. Non-existent receipt / user without history returns safe null
-    const emptyReceipt = getLatestExecutionReceipt(CONTEXT_A.workspaceId, "usr_unknown_user");
+    const emptyReceipt = await getLatestExecutionReceipt(CONTEXT_A.workspaceId, "usr_unknown_user");
     assert(emptyReceipt === null, "User without execution history returns null receipt");
 
     // D. Foreign workspace receipt isolation
-    const foreignReceipt = getLatestExecutionReceipt(CONTEXT_B.workspaceId, CONTEXT_A.userId);
+    const foreignReceipt = await getLatestExecutionReceipt(CONTEXT_B.workspaceId, CONTEXT_A.userId);
     assert(foreignReceipt === null, "Querying foreign workspace receipt returns null");
   }
 

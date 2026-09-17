@@ -71,7 +71,9 @@ export async function GET(req: NextRequest) {
       }),
       prisma.project.findMany({
         where: projectWhere,
-        select: { id: true, name: true, deadline: true, color: true, progress: true, status: true },
+        include: {
+          tasks: { select: { status: true } },
+        },
       }),
     ]);
 
@@ -89,17 +91,23 @@ export async function GET(req: NextRequest) {
       assignee: t.assignee,
     }));
 
-    const projectMilestones = projects.map((p) => ({
-      id: `milestone-${p.id}`,
-      type: "milestone" as const,
-      title: `🏁 ${p.name} Milestone Deadline`,
-      date: p.deadline ? p.deadline.toISOString().split("T")[0] : "",
-      fullDate: p.deadline ? p.deadline.toISOString() : "",
-      status: p.status,
-      progress: p.progress,
-      color: p.color || "#10B981",
-      project: { id: p.id, name: p.name, color: p.color },
-    }));
+    const projectMilestones = projects.map((p) => {
+      const total = p.tasks.length;
+      const completed = p.tasks.filter((t) => t.status === "DONE").length;
+      const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+      return {
+        id: `milestone-${p.id}`,
+        type: "milestone" as const,
+        title: `🏁 ${p.name} Milestone Deadline`,
+        date: p.deadline ? p.deadline.toISOString().split("T")[0] : "",
+        fullDate: p.deadline ? p.deadline.toISOString() : "",
+        status: p.status,
+        progress,
+        color: p.color || "#10B981",
+        project: { id: p.id, name: p.name, color: p.color },
+      };
+    });
 
     const allEvents = [...taskEvents, ...projectMilestones].sort(
       (a, b) => new Date(a.fullDate).getTime() - new Date(b.fullDate).getTime()

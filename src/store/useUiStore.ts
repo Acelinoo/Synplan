@@ -3,16 +3,6 @@ import { ToastMessage } from "@/types";
 
 type ThemeMode = "dark" | "light" | "system";
 
-export interface AppNotification {
-  id: string;
-  title: string;
-  description: string;
-  timestamp: string;
-  read: boolean;
-  type: "task" | "project" | "system" | "team";
-  link?: string;
-}
-
 interface UiState {
   theme: ThemeMode;
   isSidebarCollapsed: boolean;
@@ -21,7 +11,6 @@ interface UiState {
   isCommandPaletteOpen: boolean;
   isSettingsModalOpen: boolean;
   toasts: ToastMessage[];
-  notifications: AppNotification[];
 
   // Actions
   setTheme: (theme: ThemeMode) => void;
@@ -33,10 +22,6 @@ interface UiState {
   setSettingsModalOpen: (open: boolean) => void;
   addToast: (toast: Omit<ToastMessage, "id">) => void;
   removeToast: (id: string) => void;
-  setNotifications: (notifications: AppNotification[]) => void;
-  markNotificationAsRead: (id: string) => void;
-  markAllNotificationsAsRead: () => void;
-  addNotification: (notification: Omit<AppNotification, "id" | "timestamp" | "read">) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -47,7 +32,6 @@ export const useUiStore = create<UiState>((set) => ({
   isCommandPaletteOpen: false,
   isSettingsModalOpen: false,
   toasts: [],
-  notifications: [],
 
   setTheme: (theme) => {
     if (typeof window !== "undefined") {
@@ -92,24 +76,4 @@ export const useUiStore = create<UiState>((set) => ({
   },
   removeToast: (id) =>
     set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
-  setNotifications: (notifications) => set({ notifications }),
-  markNotificationAsRead: (id) =>
-    set((state) => ({
-      notifications: state.notifications.map((n) =>
-        n.id === id ? { ...n, read: true } : n
-      ),
-    })),
-  markAllNotificationsAsRead: () =>
-    set((state) => ({
-      notifications: state.notifications.map((n) => ({ ...n, read: true })),
-    })),
-  addNotification: (notif) => {
-    const newNotif: AppNotification = {
-      ...notif,
-      id: `notif-${Date.now()}`,
-      timestamp: "Just now",
-      read: false,
-    };
-    set((state) => ({ notifications: [newNotif, ...state.notifications] }));
-  },
 }));

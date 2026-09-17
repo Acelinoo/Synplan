@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
           },
         },
         projects: {
-          select: { id: true, name: true, progress: true, status: true },
+          select: { id: true, name: true, status: true },
         },
         _count: {
           select: { projects: true, tasks: true },
@@ -91,8 +91,8 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    const mappedWorkspaces = workspaces.map((w) => {
-      const myMembership = w.members.find((m) => m.userId === auth.userId);
+    const mappedWorkspaces = workspaces.map((w: any) => {
+      const myMembership = w.members?.find((m: any) => m.userId === auth.userId);
       const role = myMembership?.role || (w.ownerId === auth.userId ? "OWNER" : "MEMBER");
       return {
         ...w,

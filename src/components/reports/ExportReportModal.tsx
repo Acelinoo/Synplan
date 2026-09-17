@@ -4,7 +4,6 @@ import * as React from "react";
 import { X, Download, FileSpreadsheet, FileText, Code2, Check } from "lucide-react";
 import { useUiStore, useTaskStore, useWorkspaceStore } from "@/store";
 import { Button } from "@/components/ui/button";
-import { MagnetButton } from "@/components/ui/magnet-button";
 import { cn } from "@/lib/utils";
 
 interface ExportReportModalProps {
@@ -233,9 +232,9 @@ export function ExportReportModal({ isOpen, onClose, dateRange = "30d" }: Export
             >
               Cancel
             </Button>
-            <MagnetButton type="submit" size="sm" className="text-xs font-semibold">
+            <Button type="submit" size="sm" className="text-xs font-semibold">
               Download Export
-            </MagnetButton>
+            </Button>
           </div>
         </form>
       </div>

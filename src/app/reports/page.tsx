@@ -11,13 +11,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { MagnetButton } from "@/components/ui/magnet-button";
 import dynamic from "next/dynamic";
-import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { CompletionVelocityChart } from "@/components/reports/CompletionVelocityChart";
 import { StatusDistributionDonut } from "@/components/reports/StatusDistributionDonut";
 import { PriorityBreakdownChart } from "@/components/reports/PriorityBreakdownChart";
-import { AnimatedGrid } from "@/components/ui/animated-grid";
 import { CountUp } from "@/components/ui/count-up";
 import { apiClient } from "@/lib/apiClient";
 
@@ -67,38 +64,21 @@ export default function ReportsPage() {
     loadAnalytics();
   }, []);
 
-  // Compute reactive metrics based on dateRange
+  // Compute reactive metrics based on real loaded baseMetrics
   const displayedMetrics = React.useMemo(() => {
-    if (dateRange === "q3") {
-      return {
-        onTimeRate: 94.6,
-        cycleTimeDays: 2.8,
-        velocityTasksPerWk: 45,
-        overdueCount: 1,
-        completionRate: 92.4,
-        periodName: "Q3 2026 Aggregate",
-      };
-    }
-    if (dateRange === "ytd") {
-      return {
-        onTimeRate: 89.1,
-        cycleTimeDays: 3.9,
-        velocityTasksPerWk: 38,
-        overdueCount: 4,
-        completionRate: 86.5,
-        periodName: "Year-to-Date 2026",
-      };
-    }
     return {
       ...baseMetrics,
-      periodName: "Last 30 Days (Sprint #14)",
+      periodName:
+        dateRange === "q3"
+          ? "Q3 Period Aggregate"
+          : dateRange === "ytd"
+          ? "Year-to-Date Aggregate"
+          : "Last 30 Days (Current Cycle)",
     };
   }, [dateRange, baseMetrics]);
 
   return (
     <div className="relative flex flex-col gap-6">
-      <AnimatedGrid />
-
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
         <div>
@@ -139,20 +119,20 @@ export default function ReportsPage() {
             ))}
           </div>
 
-          <MagnetButton
+          <Button
             size="sm"
             onClick={() => setIsExportOpen(true)}
             className="gap-1.5 text-xs font-semibold"
           >
             <Download className="h-4 w-4" />
             <span>Export Analytics</span>
-          </MagnetButton>
+          </Button>
         </div>
       </div>
 
       {/* KPI Top Highlights */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SpotlightCard className="flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-lg border border-border bg-card p-5 shadow-xs transition-colors hover:border-border/80">
           <div className="flex items-center justify-between text-muted-foreground text-xs uppercase font-semibold">
             <span>On-Time Rate</span>
             <CheckCircle2 className="h-4 w-4 text-status-done" />
@@ -165,9 +145,9 @@ export default function ReportsPage() {
               +4.8% vs last sprint
             </p>
           </div>
-        </SpotlightCard>
+        </div>
 
-        <SpotlightCard className="flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-lg border border-border bg-card p-5 shadow-xs transition-colors hover:border-border/80">
           <div className="flex items-center justify-between text-muted-foreground text-xs uppercase font-semibold">
             <span>Avg. Cycle Time</span>
             <Clock className="h-4 w-4 text-primary" />
@@ -183,9 +163,9 @@ export default function ReportsPage() {
               From To Do to Completed
             </p>
           </div>
-        </SpotlightCard>
+        </div>
 
-        <SpotlightCard className="flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-lg border border-border bg-card p-5 shadow-xs transition-colors hover:border-border/80">
           <div className="flex items-center justify-between text-muted-foreground text-xs uppercase font-semibold">
             <span>Sprint Velocity</span>
             <TrendingUp className="h-4 w-4 text-status-progress" />
@@ -201,9 +181,9 @@ export default function ReportsPage() {
               Consistent high output
             </p>
           </div>
-        </SpotlightCard>
+        </div>
 
-        <SpotlightCard className="flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-lg border border-border bg-card p-5 shadow-xs transition-colors hover:border-border/80">
           <div className="flex items-center justify-between text-muted-foreground text-xs uppercase font-semibold">
             <span>Overdue Scope</span>
             <AlertTriangle className="h-4 w-4 text-status-blocked" />
@@ -216,7 +196,7 @@ export default function ReportsPage() {
               Awaiting blocker resolution
             </p>
           </div>
-        </SpotlightCard>
+        </div>
       </div>
 
       {/* Analytical Charts Grid */}

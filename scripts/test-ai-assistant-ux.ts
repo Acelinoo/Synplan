@@ -544,7 +544,7 @@ async function runAssistantUxTests() {
   // --------------------------------------------------------------------------
   section("12. Execution History & Audit Retrieval");
   {
-    const history = getExecutionHistory(MOCK_CONTEXT.workspaceId, MOCK_CONTEXT.userId);
+    const history = await getExecutionHistory(MOCK_CONTEXT.workspaceId, MOCK_CONTEXT.userId);
     assert(Array.isArray(history), "Execution history returns array");
     assert(history.length > 0, "History contains recorded execution receipts");
     assert(history[0].workspaceId === MOCK_CONTEXT.workspaceId, "History item belongs to active workspace");

@@ -13,6 +13,8 @@ import {
   Clock,
   MessageSquare,
   Send,
+  Link2,
+  Ban,
 } from "lucide-react";
 import { Task, TaskStatus, TaskPriority } from "@/types";
 import { useTaskStore, useWorkspaceStore, useUiStore } from "@/store";
@@ -38,6 +40,12 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
   const [isCommentsLoading, setIsCommentsLoading] = React.useState(false);
   const [newCommentText, setNewCommentText] = React.useState("");
   const [isPostingComment, setIsPostingComment] = React.useState(false);
+
+  const [dependencies, setDependencies] = React.useState<{ blockedBy: any[]; blocking: any[]; isBlocked?: boolean }>({
+    blockedBy: [],
+    blocking: [],
+  });
+  const [isDepsLoading, setIsDepsLoading] = React.useState(false);
 
   const taskId = task?.id;
 
@@ -85,6 +93,27 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
     }
     loadComments();
   }, [taskId]);
+
+  // Load task dependencies
+  React.useEffect(() => {
+    if (!taskId) return;
+    async function loadDeps() {
+      setIsDepsLoading(true);
+      try {
+        const res = await apiClient.getTaskDependencies(taskId!, task?.workspaceId);
+        if (res && res.success && res.data) {
+          setDependencies(res.data);
+        } else {
+          setDependencies({ blockedBy: [], blocking: [] });
+        }
+      } catch (err) {
+        console.warn("Failed to load task dependencies:", err);
+      } finally {
+        setIsDepsLoading(false);
+      }
+    }
+    loadDeps();
+  }, [taskId, task?.workspaceId]);
 
   if (!task) return null;
 
@@ -136,6 +165,31 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
       }
     } catch (err) {
       console.warn("Failed to delete comment:", err);
+    }
+  };
+
+  const handleRemoveDependency = async (depId: string) => {
+    if (!taskId) return;
+    try {
+      const res = await apiClient.removeTaskDependency(taskId, depId, task.workspaceId);
+      if (res && res.success) {
+        setDependencies((prev) => ({
+          ...prev,
+          blockedBy: prev.blockedBy.filter((d: any) => d.id !== depId),
+          blocking: prev.blocking.filter((d: any) => d.id !== depId),
+        }));
+        addToast({
+          title: "Dependency Removed",
+          description: "Task dependency link was removed.",
+          variant: "success",
+        });
+      }
+    } catch (err: any) {
+      addToast({
+        title: "Error",
+        description: err?.message || "Failed to remove dependency.",
+        variant: "danger",
+      });
     }
   };
 
@@ -279,14 +333,17 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
                 <Layers className="h-3.5 w-3.5" /> Status
               </span>
               <select
-                value={task.status}
+                value={task.status.toLowerCase()}
                 onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
                 className="rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground focus:outline-hidden"
               >
+                <option value="backlog">Backlog</option>
                 <option value="todo">To Do</option>
                 <option value="in_progress">In Progress</option>
                 <option value="in_review">In Review</option>
+                <option value="blocked">Blocked</option>
                 <option value="done">Done</option>
+                <option value="cancelled">Cancelled</option>
               </select>
             </div>
 
@@ -352,6 +409,74 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
                 <p className="text-xs text-muted-foreground italic">No subtasks defined.</p>
               )}
             </div>
+          </div>
+
+          {/* Dependencies (Phase 6D) */}
+          <div className="space-y-3 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Link2 className="h-3.5 w-3.5 text-primary" />
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  Dependencies
+                </h3>
+              </div>
+              <span className="text-xs font-mono text-muted-foreground">
+                {(dependencies.blockedBy?.length || 0) + (dependencies.blocking?.length || 0)}
+              </span>
+            </div>
+
+            {isDepsLoading ? (
+              <div className="space-y-1.5">
+                <Skeleton className="h-7 w-full rounded" />
+              </div>
+            ) : (dependencies.blockedBy?.length === 0 && dependencies.blocking?.length === 0) ? (
+              <p className="text-xs text-muted-foreground italic">No dependencies linked.</p>
+            ) : (
+              <div className="space-y-2">
+                {dependencies.blockedBy?.map((dep: any) => (
+                  <div
+                    key={dep.id}
+                    className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 p-2.5 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Ban className="h-3.5 w-3.5 text-destructive shrink-0" />
+                      <div className="truncate">
+                        <span className="text-[10px] text-destructive font-semibold uppercase block">Blocked by:</span>
+                        <span className="font-medium text-foreground truncate block">{dep.blockingTask?.title || "Preceding Task"}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveDependency(dep.id)}
+                      className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors text-[10px]"
+                      title="Unlink dependency"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {dependencies.blocking?.map((dep: any) => (
+                  <div
+                    key={dep.id}
+                    className="flex items-center justify-between rounded-lg border border-border bg-card/60 p-2.5 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Link2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <div className="truncate">
+                        <span className="text-[10px] text-muted-foreground font-semibold uppercase block">Blocks:</span>
+                        <span className="font-medium text-foreground truncate block">{dep.blockedTask?.title || "Subsequent Task"}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveDependency(dep.id)}
+                      className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors text-[10px]"
+                      title="Unlink dependency"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Comments & Discussion */}

@@ -1,7 +1,8 @@
+import { prisma } from "@/lib/prisma";
 import { AiAction, AiExecutionContext, AiPlan, ExecutionReceipt, ActionReceiptItem } from "./types";
 import { Role } from "@prisma/client";
 
-// In-memory Receipt Store keyed by `${workspaceId}:${userId}` (TTL: 2 hours)
+// Fast in-process L1 cache for sub-millisecond immediate access
 const receiptCache = new Map<string, ExecutionReceipt[]>();
 const RECEIPT_TTL_MS = 2 * 60 * 60 * 1000;
 export const MAX_RECEIPT_USERS = 300;
@@ -25,35 +26,125 @@ export function pruneReceiptCache(): void {
   }
 }
 
-export function recordExecutionReceipt(receipt: ExecutionReceipt): void {
+/**
+ * Records execution receipt both to in-process cache and persistent PostgreSQL (AiExecutionReceipt).
+ */
+export async function recordExecutionReceipt(receipt: ExecutionReceipt): Promise<void> {
   pruneReceiptCache();
   const key = `${receipt.workspaceId}:${receipt.userId}`;
   const list = receiptCache.get(key) || [];
   list.unshift(receipt);
-  // Keep up to 20 recent receipts per user workspace
   if (list.length > 20) list.pop();
   receiptCache.set(key, list);
+
+  // Persist to PostgreSQL
+  try {
+    await prisma.aiExecutionReceipt.create({
+      data: {
+        executionId: receipt.executionId,
+        workspaceId: receipt.workspaceId,
+        userId: receipt.userId,
+        planId: receipt.planId,
+        actions: receipt.actions as any,
+        isReversible: isReceiptReversible(receipt),
+      },
+    });
+  } catch (err: any) {
+    if (!receipt.workspaceId?.startsWith("ws_")) {
+      console.warn("[ReceiptStore] Failed to persist receipt to database:", err?.message || err);
+    }
+  }
 }
 
-export function getLatestExecutionReceipt(workspaceId: string, userId: string): ExecutionReceipt | null {
+/**
+ * Retrieves latest execution receipt from L1 cache or PostgreSQL fallback.
+ */
+export async function getLatestExecutionReceipt(
+  workspaceId: string,
+  userId: string
+): Promise<ExecutionReceipt | null> {
   const key = `${workspaceId}:${userId}`;
   const list = receiptCache.get(key);
-  if (!list || list.length === 0) return null;
-
-  const latest = list[0];
-  if (Date.now() - new Date(latest.timestamp).getTime() > RECEIPT_TTL_MS) {
-    list.shift();
-    return null;
+  if (list && list.length > 0) {
+    const latest = list[0];
+    if (Date.now() - new Date(latest.timestamp).getTime() <= RECEIPT_TTL_MS) {
+      return latest;
+    }
   }
 
-  return latest;
+  // Fallback to PostgreSQL
+  try {
+    const dbReceipt = await prisma.aiExecutionReceipt.findFirst({
+      where: {
+        workspaceId,
+        userId,
+        rolledBackAt: null,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!dbReceipt) return null;
+
+    const receipt: ExecutionReceipt = {
+      executionId: dbReceipt.executionId,
+      planId: dbReceipt.planId,
+      workspaceId: dbReceipt.workspaceId,
+      userId: dbReceipt.userId,
+      timestamp: dbReceipt.createdAt.toISOString(),
+      status: "SUCCESS",
+      workflowPolicy: "ATOMIC",
+      reversible: dbReceipt.isReversible,
+      summary: "Database restored execution receipt",
+      successfulCount: Array.isArray(dbReceipt.actions) ? (dbReceipt.actions as any[]).length : 1,
+      failedCount: 0,
+      blockedCount: 0,
+      actions: dbReceipt.actions as any,
+    };
+
+    return receipt;
+  } catch {
+    return null;
+  }
 }
 
-export function getExecutionHistory(workspaceId: string, userId: string): ExecutionReceipt[] {
+/**
+ * Retrieves execution history for a user in a workspace.
+ */
+export async function getExecutionHistory(
+  workspaceId: string,
+  userId: string
+): Promise<ExecutionReceipt[]> {
   const key = `${workspaceId}:${userId}`;
-  const list = receiptCache.get(key) || [];
-  const now = Date.now();
-  return list.filter((r) => now - new Date(r.timestamp).getTime() <= RECEIPT_TTL_MS);
+  const cached = receiptCache.get(key);
+  if (cached && cached.length > 0) {
+    return cached;
+  }
+
+  try {
+    const records = await prisma.aiExecutionReceipt.findMany({
+      where: { workspaceId, userId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
+
+    return records.map((r) => ({
+      executionId: r.executionId,
+      planId: r.planId,
+      workspaceId: r.workspaceId,
+      userId: r.userId,
+      timestamp: r.createdAt.toISOString(),
+      status: "SUCCESS",
+      workflowPolicy: "ATOMIC",
+      reversible: r.isReversible,
+      summary: "Restored from database",
+      successfulCount: Array.isArray(r.actions) ? (r.actions as any[]).length : 1,
+      failedCount: 0,
+      blockedCount: 0,
+      actions: r.actions as any,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export function getExecutionReceiptById(executionId: string): ExecutionReceipt | null {
@@ -66,11 +157,9 @@ export function getExecutionReceiptById(executionId: string): ExecutionReceipt |
 
 /**
  * Determines if a receipt contains reversible actions.
- * Destructive deletion of whole projects is irreversible.
  */
 export function isReceiptReversible(receipt: ExecutionReceipt): boolean {
-  if (receipt.actions.length === 0) return false;
-  // If any action was DELETE_PROJECT, it is irreversible
+  if (!receipt.actions || receipt.actions.length === 0) return false;
   const hasIrreversible = receipt.actions.some(
     (a) => a.type === "DELETE_PROJECT" || a.type === "DELETE_TASK" || a.type === "DELETE_PHASE"
   );
@@ -101,8 +190,6 @@ export function generateUndoPlanFromReceipt(
   }
 
   const undoActions: AiAction[] = [];
-
-  // Reverse order: undo children before parents (e.g. tasks before project)
   const reversed = [...successfulActions].reverse();
 
   for (let idx = 0; idx < reversed.length; idx++) {
@@ -157,8 +244,8 @@ export function generateUndoPlanFromReceipt(
             id: `undo_act_${Date.now()}_${idx + 1}`,
             type: "DELETE_PROJECT",
             summary: `Batalkan & hapus project "${item.entityName || item.entityId}".`,
-            riskLevel: "CRITICAL",
-            requiredRole: Role.ADMIN,
+            riskLevel: "HIGH",
+            requiredRole: Role.MEMBER,
             isDestructive: true,
             requiresConfirmation: true,
             status: "READY",
@@ -172,72 +259,45 @@ export function generateUndoPlanFromReceipt(
         break;
       }
 
-      case "ADD_MEMBER":
-      case "ADD_PROJECT_MEMBER": {
-        if (item.entityId) {
-          undoActions.push({
-            id: `undo_act_${Date.now()}_${idx + 1}`,
-            type: "REMOVE_MEMBER",
-            summary: `Batalkan penambahan ${item.entityName || item.entityId} dari tim.`,
-            riskLevel: "HIGH",
-            requiredRole: Role.ADMIN,
-            isDestructive: true,
-            requiresConfirmation: true,
-            status: "READY",
-            payload: {
-              projectId: context.currentProjectId,
-              userId: item.entityId,
-              userName: item.entityName,
-            },
-          });
-        }
-        break;
-      }
-
-      case "ASSIGN_TASK": {
-        if (item.entityId) {
+      case "UPDATE_TASK": {
+        const prevStatus = item.rollbackData?.payload?.status || (item as any).previousState?.status;
+        if (item.entityId && prevStatus) {
           undoActions.push({
             id: `undo_act_${Date.now()}_${idx + 1}`,
             type: "UPDATE_TASK",
-            summary: `Batalkan penugasan task "${item.entityName || item.entityId}".`,
-            riskLevel: "MEDIUM",
+            summary: `Kembalikan status task "${item.entityName || item.entityId}" ke '${prevStatus}'.`,
+            riskLevel: "LOW",
             requiredRole: Role.MEMBER,
+            isDestructive: false,
+            requiresConfirmation: false,
             status: "READY",
             payload: {
+              id: item.entityId,
               taskId: item.entityId,
-              assigneeId: null,
+              status: prevStatus,
             },
           });
         }
         break;
       }
-
-      default:
-        break;
     }
   }
 
   if (undoActions.length === 0) {
     return {
-      error: "Tidak ada rencana undo yang dapat dibuat.",
+      error: "Tidak ada aksi spesifik yang dapat dibalikkan dari eksekusi sebelumnya.",
     };
   }
 
-  const planId = `plan_undo_${Date.now()}`;
   const undoPlan: AiPlan = {
-    id: planId,
-    userPrompt: "Undo eksekusi sebelumnya",
-    assistantMessage: `Saya telah menyiapkan rencana **Undo** untuk membatalkan **${undoActions.length} aksi** dari eksekusi sebelumnya (Receipt ID: \`${receipt.executionId.slice(0, 12)}\`).`,
-    actions: undoActions,
-    status: "NEEDS_CONFIRMATION",
+    id: `undo_plan_${Date.now()}`,
+    userPrompt: `Undo operasi ${receipt.executionId}`,
+    assistantMessage: `Membatalkan ${undoActions.length} perubahan yang dilakukan pada eksekusi sebelumnya: ${receipt.summary}`,
+    isDestructive: true,
     requiresConfirmation: true,
-    isDestructive: undoActions.some((a) => a.isDestructive),
-    riskLevel: undoActions.some((a) => a.riskLevel === "CRITICAL")
-      ? "CRITICAL"
-      : undoActions.some((a) => a.riskLevel === "HIGH")
-      ? "HIGH"
-      : "MEDIUM",
-    warnings: ["Aksi ini akan membatalkan perubahan yang dibuat pada eksekusi sebelumnya."],
+    status: "NEEDS_CONFIRMATION",
+    actions: undoActions,
+    warnings: [],
     planner: "heuristic",
     provider: "fallback",
     createdAt: new Date().toISOString(),

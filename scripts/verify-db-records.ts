@@ -17,7 +17,7 @@ async function verifyDatabaseRecords() {
     prisma.user.findMany({ select: { id: true, name: true, email: true, role: true } }),
     prisma.workspace.findMany({ select: { id: true, name: true, slug: true } }),
     prisma.workspaceMember.findMany({ select: { id: true, userId: true, workspaceId: true, role: true } }),
-    prisma.project.findMany({ select: { id: true, name: true, status: true, progress: true } }),
+    prisma.project.findMany({ select: { id: true, name: true, status: true, slug: true } }),
     prisma.projectMember.findMany({ select: { id: true, projectId: true, userId: true } }),
     prisma.task.findMany({ select: { id: true, title: true, status: true, priority: true } }),
     prisma.subtask.findMany({ select: { id: true, title: true, completed: true, taskId: true } }),
@@ -35,7 +35,7 @@ async function verifyDatabaseRecords() {
   workspaceMembers.forEach((m) => console.log(`   - [${m.id}] user:${m.userId} -> ws:${m.workspaceId} (${m.role})`));
 
   console.log(`\n4. Projects (${projects.length} records):`);
-  projects.forEach((p) => console.log(`   - [${p.id}] ${p.name} [${p.status}] (${p.progress}%)`));
+  projects.forEach((p) => console.log(`   - [${p.id}] ${p.name} [${p.status}] (slug: ${p.slug})`));
 
   console.log(`\n5. Project Members (${projectMembers.length} records):`);
   console.log(`   - Total links: ${projectMembers.length}`);

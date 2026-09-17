@@ -48,8 +48,8 @@ export function RecentActivityFeed() {
       const newAct: ActivityItem = {
         id: raw.id || `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         actor: {
-          name: raw.actor?.name || "Squad Member",
-          initial: raw.actor?.initial || (raw.actor?.name ? raw.actor.name.charAt(0).toUpperCase() : "S"),
+          name: raw.actor?.name || ((raw as any).actorType === "SYSTEM" ? "System Automation" : "Team Member"),
+          initial: raw.actor?.initial || (raw.actor?.name ? raw.actor.name.charAt(0).toUpperCase() : (raw as any).actorType === "SYSTEM" ? "⚡" : "U"),
         },
         action: (raw.action || "updated").toLowerCase().replace(/_/g, " "),
         target: raw.target || "delivery item",
@@ -83,10 +83,10 @@ export function RecentActivityFeed() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await apiClient.getDashboardSummary(wsId);
+        const res = await apiClient.getActivity({ workspaceId: wsId, limit: 5 });
         if (!isMounted) return;
-        if (res.success && Array.isArray(res.data?.recentActivities)) {
-          const liveActs = res.data.recentActivities.map((act: any) => {
+        if (res.success && Array.isArray(res.data?.items)) {
+          const liveActs = res.data.items.map((act: any) => {
             let targetLink = "/tasks";
             if (act.entityType === "PROJECT" || act.action?.toUpperCase().includes("PROJECT")) {
               targetLink = act.entityId ? `/projects/${act.entityId}` : "/projects";
@@ -96,15 +96,17 @@ export function RecentActivityFeed() {
               targetLink = `/tasks?taskId=${act.entityId}`;
             }
 
+            const actorName = act.actor?.name || (act.actorType === "SYSTEM" ? "System Automation" : "Team Member");
+
             return {
               id: act.id,
               actor: {
-                name: act.actor || "Acelino",
-                initial: (act.actor || "A").charAt(0).toUpperCase(),
+                name: actorName,
+                initial: actorName ? actorName.charAt(0).toUpperCase() : "U",
               },
               action: (act.action || "updated").toLowerCase().replace(/_/g, " "),
-              target: act.title || act.target || "task delivery milestone",
-              timestamp: act.timestamp || "Just now",
+              target: act.target || "task delivery milestone",
+              timestamp: act.timestamp ? new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now",
               entityType: act.entityType,
               entityId: act.entityId,
               link: targetLink,

@@ -5,7 +5,7 @@ import { GET as getAuditRoute } from "../src/app/api/audit/route";
 import { GET as getConsistencyHealthRoute } from "../src/app/api/health/data-consistency/route";
 import { createSession } from "../src/lib/auth/session";
 import { NextRequest } from "next/server";
-import { TaskStatus, ProjectStatus, Role } from "@prisma/client";
+import { TaskStatus, ProjectStatus, Role, ProjectRole } from "@prisma/client";
 
 let totalTests = 0;
 let passedTests = 0;
@@ -206,16 +206,17 @@ async function runPhase5DataIntegrityTests() {
       data: {
         workspaceId: testWorkspaceA.id,
         name: "Clean Architecture Project",
-        progress: 50,
+        slug: "clean-arch-project-" + Date.now(),
         status: ProjectStatus.ACTIVE,
         members: {
-          create: [{ userId: testUserA.id, role: "OWNER" }],
+          create: [{ userId: testUserA.id, role: ProjectRole.LEAD }],
         },
       },
     });
 
     const phaseA1 = await prisma.phase.create({
       data: {
+        workspaceId: testWorkspaceA.id,
         projectId: projectA.id,
         name: "Phase 1",
         order: 1,
@@ -224,6 +225,7 @@ async function runPhase5DataIntegrityTests() {
 
     const phaseA2 = await prisma.phase.create({
       data: {
+        workspaceId: testWorkspaceA.id,
         projectId: projectA.id,
         name: "Phase 2",
         order: 2,
@@ -256,7 +258,7 @@ async function runPhase5DataIntegrityTests() {
       data: {
         workspaceId: testWorkspaceB.id,
         name: "Rogue Project in B",
-        progress: 0,
+        slug: "rogue-project-b-" + Date.now(),
         status: ProjectStatus.ACTIVE,
       },
     });
@@ -283,21 +285,21 @@ async function runPhase5DataIntegrityTests() {
     await prisma.task.delete({ where: { id: rogueTask.id } });
     await prisma.project.delete({ where: { id: rogueProject.id } });
 
-    // Test 3.3: Detect Business Invariant Violation (Invalid Progress)
+    // Test 3.3: Detect Business Invariant Violation (Invalid Project Data)
     const invalidProgressProject = await prisma.project.create({
       data: {
         workspaceId: testWorkspaceA.id,
-        name: "Corrupt Progress Project",
-        progress: 150, // Invalid > 100
+        name: "", // Invalid empty name
+        slug: "corrupt-progress-project-" + Date.now(),
         status: ProjectStatus.ACTIVE,
       },
     });
 
     const progressCheck = await checkWorkspaceDataConsistency(testWorkspaceA.id);
-    assert(progressCheck.checks.businessInvariants === "FAIL", "Consistency checker detects invalid project progress");
+    assert(progressCheck.checks.businessInvariants === "FAIL", "Consistency checker detects invalid project data");
     assert(
-      progressCheck.issues.some((i) => i.type === "INVALID_PROJECT_PROGRESS"),
-      "Consistency checker flags INVALID_PROJECT_PROGRESS issue"
+      progressCheck.issues.some((i) => i.type === "INVALID_PROJECT_DATA"),
+      "Consistency checker flags INVALID_PROJECT_DATA issue"
     );
 
     await prisma.project.delete({ where: { id: invalidProgressProject.id } });

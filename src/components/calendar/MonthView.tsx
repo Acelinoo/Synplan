@@ -14,10 +14,13 @@ interface MonthViewProps {
 const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const statusColorMap: Record<TaskStatus, { bg: string; text: string }> = {
+  backlog: { bg: "bg-muted/15 hover:bg-muted/25", text: "text-muted-foreground" },
   todo: { bg: "bg-status-todo/15 hover:bg-status-todo/25", text: "text-muted-foreground" },
   in_progress: { bg: "bg-status-progress/15 hover:bg-status-progress/25", text: "text-status-progress" },
   in_review: { bg: "bg-status-review/15 hover:bg-status-review/25", text: "text-status-review" },
   done: { bg: "bg-status-done/15 hover:bg-status-done/25", text: "text-status-done" },
+  blocked: { bg: "bg-red-500/15 hover:bg-red-500/25", text: "text-red-500" },
+  cancelled: { bg: "bg-muted/20 hover:bg-muted/30", text: "text-muted-foreground" },
 };
 
 export function MonthView({ currentDate, tasks, onSelectDate, onSelectTask }: MonthViewProps) {

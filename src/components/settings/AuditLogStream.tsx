@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Key, Terminal } from "lucide-react";
-import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { apiClient } from "@/lib/apiClient";
 
 interface AuditEntry {
@@ -45,7 +44,7 @@ export function AuditLogStream() {
   }, []);
 
   return (
-    <SpotlightCard className="space-y-4">
+    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2.5">
           <Terminal className="h-4 w-4 text-primary" />
@@ -86,6 +85,6 @@ export function AuditLogStream() {
           <p className="text-xs text-muted-foreground italic p-2">No security audit records logged yet.</p>
         )}
       </div>
-    </SpotlightCard>
+    </div>
   );
 }

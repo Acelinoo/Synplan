@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuthGuard } from "@/lib/authGuard";
-import { ProjectStatus } from "@prisma/client";
+import { ProjectStatus, ProjectRole } from "@prisma/client";
 import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
 import { validateRequestBody } from "@/lib/validation/apiValidator";
 import { CreateProjectSchema } from "@/lib/validation/schemas";
@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
     const statusParam = searchParams.get("status")?.toUpperCase();
     const search = searchParams.get("search")?.trim();
+    const sortParam = searchParams.get("sort")?.toLowerCase();
 
     // Parse standardized pagination parameters
     const pagination = parsePaginationParams(req, { defaultLimit: 20, maxLimit: 50 });
@@ -46,6 +47,17 @@ export async function GET(req: NextRequest) {
     // Count total matching projects
     const total = await prisma.project.count({ where: whereClause });
 
+    let orderBy: any = { createdAt: "desc" };
+    if (sortParam === "updated") {
+      orderBy = { updatedAt: "desc" };
+    } else if (sortParam === "name") {
+      orderBy = { name: "asc" };
+    } else if (sortParam === "deadline") {
+      orderBy = { deadline: "asc" };
+    } else if (sortParam === "created") {
+      orderBy = { createdAt: "desc" };
+    }
+
     const queryOptions: any = {
       where: whereClause,
       include: {
@@ -58,7 +70,7 @@ export async function GET(req: NextRequest) {
           select: { tasks: true },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy,
       take: pagination.limit,
     };
 
@@ -171,19 +183,20 @@ export async function POST(req: NextRequest) {
       validMemberIds = workspaceMembers.map((m) => m.userId);
     }
 
+    const slugBase = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+    const uniqueSlug = `${slugBase}-${Math.random().toString(36).substring(2, 7)}`;
+
     const project = await prisma.project.create({
       data: {
         workspaceId: targetWorkspaceId,
         name: name.trim(),
+        slug: uniqueSlug,
         description: description ? description.trim() : null,
         color: color || "#0284C7",
         deadline: deadline ? new Date(deadline) : null,
         status: (status as ProjectStatus) || ProjectStatus.ACTIVE,
-        progress: 0,
-        totalTasks: 0,
-        completedTasks: 0,
         members: {
-          create: validMemberIds.map((uId: string) => ({ userId: uId, role: "MEMBER" })),
+          create: validMemberIds.map((uId: string) => ({ userId: uId, role: ProjectRole.CONTRIBUTOR })),
         },
       },
       include: {

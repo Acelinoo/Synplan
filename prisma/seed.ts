@@ -1,18 +1,30 @@
-import { PrismaClient, Role, ProjectStatus, TaskStatus, TaskPriority } from "@prisma/client";
+import { PrismaClient, Role, ProjectRole, ProjectStatus, TaskStatus, TaskPriority, ActorType } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Starting Synplan Database Seeding...");
+  console.log("🌱 Starting Synplan 2.0 Database Seeding...");
 
-  // 1. Clean existing records (in reverse dependency order)
+  // 1. Clean existing records in reverse dependency order
+  await prisma.aiExecutionReceipt.deleteMany({});
+  await prisma.aiConversationTurn.deleteMany({});
+  await prisma.aiConversation.deleteMany({});
+  await prisma.aiConfirmationSession.deleteMany({});
+  await prisma.automationRule.deleteMany({});
   await prisma.auditLog.deleteMany({});
+  await prisma.notification.deleteMany({});
+  await prisma.taskComment.deleteMany({});
+  await prisma.taskDependency.deleteMany({});
   await prisma.subtask.deleteMany({});
   await prisma.task.deleteMany({});
+  await prisma.milestone.deleteMany({});
+  await prisma.phase.deleteMany({});
   await prisma.projectMember.deleteMany({});
   await prisma.project.deleteMany({});
   await prisma.workspaceMember.deleteMany({});
   await prisma.workspace.deleteMany({});
+  await prisma.session.deleteMany({});
+  await prisma.account.deleteMany({});
   await prisma.user.deleteMany({});
 
   // 2. Create Users
@@ -50,7 +62,16 @@ async function main() {
 
   console.log("✅ Users seeded.");
 
-  // 3. Create Workspace
+  // 3. Create Seed Session for Development
+  await prisma.session.create({
+    data: {
+      sessionToken: "seed_dev_session_token_acelino_2026",
+      userId: acelino.id,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  // 4. Create Workspace
   const workspace = await prisma.workspace.create({
     data: {
       name: "Engineering Core",
@@ -69,23 +90,23 @@ async function main() {
 
   console.log("✅ Workspace and WorkspaceMembers seeded.");
 
-  // 4. Create Projects
+  // 5. Create Projects
   const projectSynplan = await prisma.project.create({
     data: {
       workspaceId: workspace.id,
-      name: "Synplan SaaS Platform MVP",
-      description: "Multi-workspace project management platform with high-density Kanban, Calendar, and Workload visualizers.",
-      progress: 68,
+      name: "Synplan Platform 2.0",
+      slug: "synplan-platform-2",
+      description: "AI-Native project management platform with multi-view tasks, project intelligence, and serverless persistence.",
       status: ProjectStatus.ACTIVE,
-      deadline: new Date("2026-09-12"),
+      startDate: new Date("2026-08-01"),
+      targetDate: new Date("2026-10-15"),
+      deadline: new Date("2026-10-15"),
       color: "#6366F1",
-      totalTasks: 25,
-      completedTasks: 17,
       members: {
         create: [
-          { userId: acelino.id, role: Role.OWNER },
-          { userId: sarah.id, role: Role.ADMIN },
-          { userId: marcus.id, role: Role.MEMBER },
+          { userId: acelino.id, role: ProjectRole.LEAD },
+          { userId: sarah.id, role: ProjectRole.CONTRIBUTOR },
+          { userId: marcus.id, role: ProjectRole.CONTRIBUTOR },
         ],
       },
     },
@@ -95,17 +116,17 @@ async function main() {
     data: {
       workspaceId: workspace.id,
       name: "GerobakLink Integration API",
+      slug: "gerobaklink-integration-api",
       description: "High-performance POS and ordering middleware connecting local Indonesian merchant telemetry.",
-      progress: 84,
       status: ProjectStatus.ACTIVE,
-      deadline: new Date("2026-09-18"),
+      startDate: new Date("2026-08-15"),
+      targetDate: new Date("2026-09-30"),
+      deadline: new Date("2026-09-30"),
       color: "#10B981",
-      totalTasks: 25,
-      completedTasks: 21,
       members: {
         create: [
-          { userId: acelino.id, role: Role.OWNER },
-          { userId: devon.id, role: Role.MEMBER },
+          { userId: acelino.id, role: ProjectRole.LEAD },
+          { userId: devon.id, role: ProjectRole.CONTRIBUTOR },
         ],
       },
     },
@@ -115,38 +136,18 @@ async function main() {
     data: {
       workspaceId: workspace.id,
       name: "Cybersecurity SOC & Telemetry",
+      slug: "cybersecurity-soc-telemetry",
       description: "Automated vulnerability scanner, SOC event correlation engine, and real-time audit logging.",
-      progress: 42,
       status: ProjectStatus.ACTIVE,
-      deadline: new Date("2026-09-30"),
+      startDate: new Date("2026-09-01"),
+      targetDate: new Date("2026-11-30"),
+      deadline: new Date("2026-11-30"),
       color: "#F59E0B",
-      totalTasks: 19,
-      completedTasks: 8,
       members: {
         create: [
-          { userId: acelino.id, role: Role.OWNER },
-          { userId: marcus.id, role: Role.MEMBER },
-          { userId: devon.id, role: Role.MEMBER },
-        ],
-      },
-    },
-  });
-
-  const projectDesign = await prisma.project.create({
-    data: {
-      workspaceId: workspace.id,
-      name: "Design System Tokens v2.0",
-      description: "Full dark & light Obsidian token scale, React Bits micro-animations, and zero-slop UI primitives.",
-      progress: 100,
-      status: ProjectStatus.COMPLETED,
-      deadline: new Date("2026-08-28"),
-      color: "#8B5CF6",
-      totalTasks: 14,
-      completedTasks: 14,
-      members: {
-        create: [
-          { userId: acelino.id, role: Role.OWNER },
-          { userId: sarah.id, role: Role.ADMIN },
+          { userId: acelino.id, role: ProjectRole.LEAD },
+          { userId: marcus.id, role: ProjectRole.CONTRIBUTOR },
+          { userId: devon.id, role: ProjectRole.CONTRIBUTOR },
         ],
       },
     },
@@ -154,206 +155,164 @@ async function main() {
 
   console.log("✅ Projects seeded.");
 
-  // 5. Create Tasks with Subtasks
-  await prisma.task.create({
+  // 6. Create Phases & Milestones
+  const phase1 = await prisma.phase.create({
     data: {
       workspaceId: workspace.id,
       projectId: projectSynplan.id,
-      title: "Setup Next.js 16 App Router & Tailwind Config",
-      description: "Initialize base Next.js project with custom tokens, dark mode obsidian, and typography.",
-      status: TaskStatus.DONE,
-      priority: TaskPriority.HIGH,
-      assigneeId: acelino.id,
-      dueDate: new Date("2026-08-28"),
-      completedAt: new Date("2026-08-28"),
-      order: 0,
-      tags: ["core", "setup"],
-      subtasks: {
-        create: [
-          { title: "Configure tailwind tokens", completed: true },
-          { title: "Setup Inter & JetBrains Mono", completed: true },
-        ],
-      },
+      name: "Phase 1: Architecture & Foundation",
+      order: 1.0,
+      startDate: new Date("2026-08-01"),
+      endDate: new Date("2026-08-31"),
     },
   });
 
-  await prisma.task.create({
+  const phase2 = await prisma.phase.create({
     data: {
       workspaceId: workspace.id,
       projectId: projectSynplan.id,
-      title: "Implement Zustand State Stores",
-      description: "Create useWorkspaceStore, useTaskStore, useCalendarStore, and useUiStore.",
+      name: "Phase 2: Core Task & Multi-View Engine",
+      order: 2.0,
+      startDate: new Date("2026-09-01"),
+      endDate: new Date("2026-09-30"),
+    },
+  });
+
+  const milestoneM1 = await prisma.milestone.create({
+    data: {
+      workspaceId: workspace.id,
+      projectId: projectSynplan.id,
+      title: "M1: Database & Serverless State Baseline",
+      targetDate: new Date("2026-09-20"),
+      isReached: true,
+      reachedAt: new Date(),
+    },
+  });
+
+  const milestoneM2 = await prisma.milestone.create({
+    data: {
+      workspaceId: workspace.id,
+      projectId: projectSynplan.id,
+      title: "M2: AI Command Center Production Release",
+      targetDate: new Date("2026-10-15"),
+      isReached: false,
+    },
+  });
+
+  console.log("✅ Phases and Milestones seeded.");
+
+  // 7. Create Tasks with Subtasks & Dependencies
+  const task1 = await prisma.task.create({
+    data: {
+      workspaceId: workspace.id,
+      projectId: projectSynplan.id,
+      phaseId: phase1.id,
+      milestoneId: milestoneM1.id,
+      creatorId: acelino.id,
+      assigneeId: acelino.id,
+      title: "Synchronize PostgreSQL 17 Schema & Baseline",
+      description: "Initialize clean Synplan 2.0 schema with serverless-safe AI state models and compound indexes.",
       status: TaskStatus.DONE,
       priority: TaskPriority.URGENT,
-      assigneeId: acelino.id,
-      dueDate: new Date("2026-08-28"),
-      completedAt: new Date("2026-08-28"),
-      order: 1,
-      tags: ["state", "frontend"],
+      order: 1.0,
+      completedAt: new Date(),
+      tags: ["database", "core", "infrastructure"],
       subtasks: {
         create: [
-          { title: "Workspace & Project Store", completed: true },
-          { title: "Task & Kanban Mutators", completed: true },
+          { title: "Define all 16 Prisma models", completed: true, order: 1.0 },
+          { title: "Apply baseline migration 20260917024808_init_synplan2", completed: true, order: 2.0 },
         ],
       },
     },
   });
 
-  await prisma.task.create({
+  const task2 = await prisma.task.create({
     data: {
       workspaceId: workspace.id,
       projectId: projectSynplan.id,
-      title: "Build Multi-Column Kanban Board",
-      description: "Interactive Kanban with 5 lanes, priority indicators, subtasks checklist, and Done celebration.",
-      status: TaskStatus.IN_PROGRESS,
-      priority: TaskPriority.URGENT,
-      assigneeId: acelino.id,
-      dueDate: new Date("2026-08-29"),
-      order: 0,
-      tags: ["kanban", "ui"],
-      subtasks: {
-        create: [
-          { title: "KanbanCard with priority styles", completed: true },
-          { title: "Micro-feedback animation on Done", completed: false },
-        ],
-      },
-    },
-  });
-
-  await prisma.task.create({
-    data: {
-      workspaceId: workspace.id,
-      projectId: projectGerobak.id,
-      title: "GerobakLink POS Webhook Integration",
-      description: "Connect incoming POS transactional webhooks with Synplan task auto-generation.",
-      status: TaskStatus.IN_REVIEW,
-      priority: TaskPriority.HIGH,
+      phaseId: phase2.id,
+      milestoneId: milestoneM2.id,
+      creatorId: acelino.id,
       assigneeId: sarah.id,
-      dueDate: new Date("2026-08-30"),
-      order: 0,
-      tags: ["backend", "pos"],
+      title: "Implement Persistent AI Confirmation Engine",
+      description: "Replace in-memory Map with AiConfirmationSession table in PostgreSQL.",
+      status: TaskStatus.IN_PROGRESS,
+      priority: TaskPriority.HIGH,
+      order: 2.0,
+      dueDate: new Date("2026-09-25"),
+      tags: ["ai", "backend", "security"],
       subtasks: {
         create: [
-          { title: "Webhook signature validation", completed: true },
-          { title: "Idempotency key handler", completed: true },
+          { title: "Update confirmationStore.ts to use Prisma", completed: false, order: 1.0 },
+          { title: "Add plan fingerprint validation against DB", completed: false, order: 2.0 },
         ],
       },
     },
   });
 
-  await prisma.task.create({
+  const task3 = await prisma.task.create({
     data: {
       workspaceId: workspace.id,
-      projectId: projectSecurity.id,
-      title: "Security Telemetry Audit Logging",
-      description: "Log user mutations and workspace access requests for compliance report generation.",
-      status: TaskStatus.TODO,
-      priority: TaskPriority.MEDIUM,
+      projectId: projectSynplan.id,
+      phaseId: phase2.id,
+      milestoneId: milestoneM2.id,
+      creatorId: acelino.id,
       assigneeId: marcus.id,
-      dueDate: new Date("2026-09-05"),
-      order: 0,
-      tags: ["security", "audit"],
+      title: "Build Multi-View Task Engine (Board, List, Table)",
+      description: "Unified task dataset rendered interchangeably as Kanban Board, Grouped List, and Spreadsheet Table.",
+      status: TaskStatus.TODO,
+      priority: TaskPriority.HIGH,
+      order: 3.0,
+      dueDate: new Date("2026-09-30"),
+      tags: ["frontend", "views", "ux"],
       subtasks: {
         create: [
-          { title: "Create audit log schema", completed: false },
+          { title: "TableView high-density component", completed: false, order: 1.0 },
+          { title: "ListView grouped with multi-select", completed: false, order: 2.0 },
         ],
       },
     },
   });
 
-  await prisma.task.create({
+  // Create dependency: Task 3 depends on Task 2
+  await prisma.taskDependency.create({
+    data: {
+      blockingTaskId: task2.id,
+      blockedTaskId: task3.id,
+    },
+  });
+
+  // Comments
+  await prisma.taskComment.create({
+    data: {
+      taskId: task1.id,
+      authorId: sarah.id,
+      content: "Baseline migration applied successfully to Supabase. All 21 tables verified.",
+    },
+  });
+
+  // Audit Log
+  await prisma.auditLog.create({
     data: {
       workspaceId: workspace.id,
-      projectId: projectGerobak.id,
-      title: "Legacy Database Migration Script",
-      description: "Awaiting external database dump and schema validation before running data seed.",
-      status: TaskStatus.BLOCKED,
-      priority: TaskPriority.URGENT,
-      assigneeId: devon.id,
-      dueDate: new Date("2026-08-29"),
-      order: 0,
-      tags: ["database", "blocked"],
-      subtasks: {
-        create: [
-          { title: "Backup existing database", completed: true },
-          { title: "Resolve schema foreign key deadlock", completed: false },
-        ],
-      },
+      actorId: acelino.id,
+      actorType: ActorType.USER,
+      action: "DATABASE_INITIALIZED",
+      target: "PostgreSQL 17.6 Schema",
+      entityType: "DATABASE",
+      entityId: "synplan-2.0",
+      source: "SYSTEM_MIGRATION",
+      after: { tablesCount: 21, status: "READY" },
     },
   });
 
-  console.log("✅ Tasks and Subtasks seeded.");
-
-  // 6. Create Notifications
-  await prisma.notification.deleteMany({});
-  await prisma.notification.createMany({
-    data: [
-      {
-        workspaceId: workspace.id,
-        userId: acelino.id,
-        title: "Sprint Review Scheduled",
-        description: "Sprint #14 telemetry and velocity review set for tomorrow 14:00 UTC.",
-        type: "task",
-        link: "/calendar",
-        read: true,
-      },
-      {
-        workspaceId: workspace.id,
-        userId: acelino.id,
-        title: "New Project Created",
-        description: 'Sarah Chen created new project "GerobakLink Integration API".',
-        type: "project",
-        link: "/projects",
-        read: false,
-      },
-      {
-        workspaceId: workspace.id,
-        userId: acelino.id,
-        title: "Milestone Completed",
-        description: "Design System Tokens v2.0 reached 100% completion.",
-        type: "milestone",
-        link: "/reports",
-        read: false,
-      },
-    ],
-  });
-  console.log("✅ Notifications seeded.");
-
-  // 7. Create Audit Logs
-  await prisma.auditLog.deleteMany({});
-  await prisma.auditLog.createMany({
-    data: [
-      {
-        workspaceId: workspace.id,
-        actorId: acelino.id,
-        action: "WORKSPACE_RBAC_UPDATE",
-        target: "Permissions policy sync",
-        ipAddress: "192.168.1.104",
-      },
-      {
-        workspaceId: workspace.id,
-        actorId: sarah.id,
-        action: "PROJECT_CREATE",
-        target: "GerobakLink Integration API",
-        ipAddress: "114.124.201.88",
-      },
-      {
-        workspaceId: workspace.id,
-        actorId: acelino.id,
-        action: "API_TOKEN_ROTATED",
-        target: "Live Production Token",
-        ipAddress: "127.0.0.1",
-      },
-    ],
-  });
-
-  console.log("✅ Audit Logs seeded.");
-  console.log("🎉 Database seeding complete!");
+  console.log("✅ Tasks, Dependencies, Comments, and Audit Logs seeded.");
+  console.log("🎉 Synplan 2.0 Database Seeding Completed Successfully!");
 }
 
 main()
   .catch((e) => {
-    console.error("❌ Seeding error:", e);
+    console.error("❌ Seeding failed:", e);
     process.exit(1);
   })
   .finally(async () => {

@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Flag, Clock } from "lucide-react";
-import { SpotlightCard } from "@/components/ui/spotlight-card";
 
 interface PriorityStat {
   level: string;
@@ -21,7 +20,7 @@ const priorityStats: PriorityStat[] = [
 
 export function PriorityBreakdownChart() {
   return (
-    <SpotlightCard className="flex flex-col justify-between">
+    <div className="flex flex-col justify-between rounded-lg border border-border bg-card p-5 shadow-xs transition-colors hover:border-border/80">
       <div>
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
@@ -69,6 +68,6 @@ export function PriorityBreakdownChart() {
       <div className="mt-4 pt-3 border-t border-border/60 text-[11px] text-muted-foreground text-center font-mono">
         Average Resolution Turnaround: 9.4h (Target: &lt;12h)
       </div>
-    </SpotlightCard>
+    </div>
   );
 }

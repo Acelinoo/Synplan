@@ -404,6 +404,7 @@ async function runAuthTests() {
       data: {
         workspaceId: userWs1.id,
         name: "Authorized Project Alpha",
+        slug: "authorized-project-alpha-" + Date.now(),
         status: "ACTIVE",
       },
     });

@@ -20,7 +20,6 @@ import {
 import { useWorkspaceStore, useUiStore } from "@/store";
 import { Project } from "@/types";
 import { Button } from "@/components/ui/button";
-import { MagnetButton } from "@/components/ui/magnet-button";
 import { apiClient } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 import { AiPlan, AiCreationMode } from "@/lib/ai/types";
@@ -580,7 +579,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                     >
                       Back
                     </Button>
-                    <MagnetButton
+                    <Button
                       type="button"
                       disabled={!aiPrompt.trim() || isGeneratingPlan}
                       onClick={() => handleGenerateAiPlan()}
@@ -597,7 +596,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                           <span>Generate Project Plan</span>
                         </>
                       )}
-                    </MagnetButton>
+                    </Button>
                   </div>
                 </>
               ) : (
@@ -776,7 +775,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                       Edit Prompt
                     </Button>
                     <div className="flex items-center gap-2">
-                      <MagnetButton
+                      <Button
                         type="button"
                         disabled={isExecutingPlan}
                         onClick={handleExecuteAiPlan}
@@ -793,7 +792,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                             <span>Create Project Now</span>
                           </>
                         )}
-                      </MagnetButton>
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -939,7 +938,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                 >
                   Cancel
                 </Button>
-                <MagnetButton
+                <Button
                   type="submit"
                   disabled={!name.trim() || isSubmitting}
                   className="bg-primary text-primary-foreground font-semibold px-4"
@@ -949,7 +948,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
                     : editingProject
                     ? "Save Changes"
                     : "Create Project"}
-                </MagnetButton>
+                </Button>
               </div>
             </form>
           )}

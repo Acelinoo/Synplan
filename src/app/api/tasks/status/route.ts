@@ -105,13 +105,14 @@ export async function PATCH(req: NextRequest) {
           }
         }
 
-        await tx.project.update({
-          where: { id: existingTask.projectId },
-          data: {
-            progress,
-            status: nextStatus,
-          },
-        });
+        if (nextStatus !== existingTask.project?.status) {
+          await tx.project.update({
+            where: { id: existingTask.projectId },
+            data: {
+              status: nextStatus,
+            },
+          });
+        }
       }
 
       return {

@@ -11,6 +11,7 @@ import { parsePaginationParams } from "@/lib/pagination";
 import { publishWorkspaceEvent } from "@/lib/realtimeServer";
 import { idempotency } from "@/lib/idempotency";
 import { createAuditEntry } from "@/lib/audit";
+import { TaskViewsService } from "@/domains/task/views.service";
 
 // GET /api/tasks - Retrieve tasks list for authorized workspace
 export async function GET(req: NextRequest) {
@@ -26,6 +27,7 @@ export async function GET(req: NextRequest) {
     const priorityParam = searchParams.get("priority")?.toUpperCase();
     const assigneeId = searchParams.get("assigneeId");
     const search = searchParams.get("search")?.trim();
+    const viewMode = searchParams.get("view") || searchParams.get("viewMode");
 
     // Parse standardized pagination parameters
     const pagination = parsePaginationParams(req, { defaultLimit: 50, maxLimit: 100 });
@@ -34,6 +36,44 @@ export async function GET(req: NextRequest) {
     const { auth, errorResponse } = await requireAuthGuard(req, "tasks.view", workspaceId || undefined);
     if (errorResponse || !auth) {
       return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Support dedicated Multi-View data contracts
+    if (viewMode === "board") {
+      const boardData = await TaskViewsService.getBoardView({
+        workspaceId: auth.workspaceId,
+        projectId: projectId || undefined,
+        phaseId: phaseId || undefined,
+        status: statusParam as any,
+        priority: priorityParam as any,
+        assigneeId: assigneeId || undefined,
+        search,
+      });
+      return NextResponse.json({ success: true, data: boardData });
+    }
+
+    if (viewMode === "list" && projectId) {
+      const listData = await TaskViewsService.getListView({
+        workspaceId: auth.workspaceId,
+        projectId,
+        search,
+      });
+      return NextResponse.json({ success: true, data: listData });
+    }
+
+    if (viewMode === "table") {
+      const tableData = await TaskViewsService.getTableView({
+        workspaceId: auth.workspaceId,
+        projectId: projectId || undefined,
+        phaseId: phaseId || undefined,
+        status: statusParam as any,
+        priority: priorityParam as any,
+        assigneeId: assigneeId || undefined,
+        search,
+        page: pagination.page,
+        limit: pagination.limit,
+      });
+      return NextResponse.json({ success: true, data: tableData.rows, pagination: tableData.pagination });
     }
 
     const whereClause: any = { workspaceId: auth.workspaceId };

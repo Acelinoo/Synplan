@@ -60,6 +60,7 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
       where: { workspaceId },
       include: {
         phases: { orderBy: { order: "asc" } },
+        _count: { select: { tasks: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 50,
@@ -166,7 +167,7 @@ export async function getAiExecutionContext(options: GetContextOptions): Promise
       id: p.id,
       name: p.name,
       status: p.status,
-      totalTasks: p.totalTasks,
+      totalTasks: p._count?.tasks ?? 0,
       deadline: p.deadline ? p.deadline.toISOString() : null,
     })),
     phases,

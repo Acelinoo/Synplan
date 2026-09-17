@@ -542,7 +542,7 @@ async function runWorkflowSafetyTests() {
     assert(execRes.receipt?.reversible === true, "Receipt marks CREATE_TASK as reversible");
     assert(execRes.receipt?.status === "SUCCESS", "Receipt status is SUCCESS");
 
-    const latestStored = getLatestExecutionReceipt(MOCK_CONTEXT.workspaceId, MOCK_CONTEXT.userId);
+    const latestStored = await getLatestExecutionReceipt(MOCK_CONTEXT.workspaceId, MOCK_CONTEXT.userId);
     assert(latestStored?.planId === "plan_receipt_test", "Stored receipt matches plan ID in cache");
   }
 
@@ -913,15 +913,15 @@ async function runWorkflowSafetyTests() {
   // --------------------------------------------------------------------------
   section("19. Receipt Store Lifecycle & Scoped Retrieval");
   {
-    const latestRec = getLatestExecutionReceipt(MOCK_CONTEXT.workspaceId, MOCK_CONTEXT.userId);
+    const latestRec = await getLatestExecutionReceipt(MOCK_CONTEXT.workspaceId, MOCK_CONTEXT.userId);
     assert(latestRec !== null, "Can retrieve latest receipt for current workspace and user");
     assert(latestRec?.workspaceId === MOCK_CONTEXT.workspaceId, "Receipt workspaceId matches active workspace");
     assert(latestRec?.userId === MOCK_CONTEXT.userId, "Receipt userId matches active user");
 
-    const otherUserRec = getLatestExecutionReceipt(MOCK_CONTEXT.workspaceId, "usr_unknown_9999");
+    const otherUserRec = await getLatestExecutionReceipt(MOCK_CONTEXT.workspaceId, "usr_unknown_9999");
     assert(otherUserRec === null, "Other user without execution history returns null");
 
-    const otherWsRec = getLatestExecutionReceipt("ws_foreign_999", MOCK_CONTEXT.userId);
+    const otherWsRec = await getLatestExecutionReceipt("ws_foreign_999", MOCK_CONTEXT.userId);
     assert(otherWsRec === null, "Foreign workspace query returns null");
   }
 

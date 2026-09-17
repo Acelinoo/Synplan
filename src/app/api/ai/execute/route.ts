@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       // If a confirmation token is provided, validate it against the server confirmation store
       const tokenToValidate = confirmationToken || plan.confirmationToken;
       if (tokenToValidate) {
-        const confValidation = validatePendingConfirmation({
+        const confValidation = await validatePendingConfirmation({
           token: tokenToValidate,
           fingerprint: planFingerprint || plan.planFingerprint,
           userId: auth.userId,
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
     // 6. Mark confirmation token as executed to prevent replay
     const effectiveToken = confirmationToken || plan.confirmationToken;
     if (effectiveToken) {
-      markConfirmationExecuted(effectiveToken);
+      await markConfirmationExecuted(effectiveToken);
     }
 
     // 7. Update active and created/modified entities in conversation store

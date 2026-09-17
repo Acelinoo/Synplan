@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Moon, Sun, Laptop, Palette, Check } from "lucide-react";
 import { useUiStore } from "@/store";
-import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { cn } from "@/lib/utils";
 
 export function ThemeSettingsPanel() {
@@ -33,7 +32,7 @@ export function ThemeSettingsPanel() {
   };
 
   return (
-    <SpotlightCard className="space-y-5">
+    <div className="rounded-xl border border-border bg-card p-5 space-y-5">
       <div className="flex items-center gap-2.5 border-b border-border pb-3">
         <Palette className="h-4 w-4 text-primary" />
         <div>
@@ -72,6 +71,6 @@ export function ThemeSettingsPanel() {
           );
         })}
       </div>
-    </SpotlightCard>
+    </div>
   );
 }

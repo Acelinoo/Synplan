@@ -209,6 +209,7 @@ async function runPhase8QaSuite() {
     data: {
       workspaceId: wsBeta.id,
       name: "Confidential Beta Project",
+      slug: "confidential-beta-project-" + Date.now(),
       description: "Protected resource in foreign tenant",
       status: ProjectStatus.ACTIVE,
       color: "#0284C7",
@@ -217,6 +218,7 @@ async function runPhase8QaSuite() {
 
   const phaseBeta = await prisma.phase.create({
     data: {
+      workspaceId: wsBeta.id,
       projectId: projBeta.id,
       name: "Beta Architecture",
       order: 1,

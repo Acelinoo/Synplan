@@ -1,4 +1,4 @@
-import { Role, TaskPriority, TaskStatus } from "@prisma/client";
+import { ProjectRole, Role, TaskPriority, TaskStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { publishWorkspaceEvent } from "@/lib/realtimeServer";
 import { createNotification } from "@/lib/notificationService";
@@ -15,6 +15,7 @@ import {
   resolveWorkspacePhase,
 } from "../entityResolver";
 import { resolveNaturalDate } from "../dateResolver";
+import { TaskStateMachine } from "@/domains/task/task.state-machine";
 
 export interface ActionDefinition<P = any, R = any> {
   name: AiActionType;
@@ -77,20 +78,32 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         }
       }
 
+      const baseSlug = payload.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
       const project = await prisma.project.create({
         data: {
           workspaceId,
           name: payload.name.trim(),
+          slug: `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`,
           description: payload.description || null,
           deadline: deadlineDate,
           status: payload.status || "ACTIVE",
           color: payload.color || "#0284C7",
-          progress: 0,
         },
       });
 
       sessionMap.set("latest", project.id);
       sessionMap.set(project.name.toLowerCase().trim(), project.id);
+
+      // Add creator as project LEAD
+      if (userId) {
+        await prisma.projectMember.create({
+          data: {
+            projectId: project.id,
+            userId,
+            role: ProjectRole.LEAD,
+          },
+        }).catch(() => {});
+      }
 
       // Create Phases if specified
       const phaseMap = new Map<string, string>();
@@ -98,6 +111,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         for (const ph of payload.phases) {
           const createdPhase = await prisma.phase.create({
             data: {
+              workspaceId,
               projectId: project.id,
               name: ph.name.trim(),
               order: ph.order || 0,
@@ -181,17 +195,9 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
           data: {
             projectId: project.id,
             userId: mUserId,
-            role: Role.MEMBER,
+            role: ProjectRole.CONTRIBUTOR,
           },
         }).catch(() => {});
-      }
-
-      // Update totalTasks count
-      if (totalTasks > 0) {
-        await prisma.project.update({
-          where: { id: project.id },
-          data: { totalTasks },
-        });
       }
 
       // Realtime Broadcast
@@ -304,11 +310,13 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       });
 
       if (!existing) {
+        const roleUpper = payload.role?.toUpperCase();
+        const memberRole = (roleUpper === "LEAD" || roleUpper === "VIEWER") ? (roleUpper as ProjectRole) : ProjectRole.CONTRIBUTOR;
         await prisma.projectMember.create({
           data: {
             projectId: targetProjectId,
             userId: targetUserId,
-            role: (payload.role?.toUpperCase() as Role) || Role.MEMBER,
+            role: memberRole,
           },
         });
 
@@ -426,11 +434,6 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         },
       });
 
-      await prisma.project.update({
-        where: { id: targetProjectId },
-        data: { totalTasks: { increment: 1 } },
-      }).catch(() => {});
-
       if (assigneeId && assigneeId !== userId) {
         createNotification({
           workspaceId,
@@ -471,12 +474,6 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
         await prisma.task.deleteMany({
           where: { id: result.taskId, workspaceId: context.workspaceId },
         }).catch(() => {});
-        if (result?.projectId) {
-          await prisma.project.update({
-            where: { id: result.projectId },
-            data: { totalTasks: { decrement: 1 } },
-          }).catch(() => {});
-        }
       }
     },
   },
@@ -629,6 +626,7 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
 
       const phase = await prisma.phase.create({
         data: {
+          workspaceId,
           projectId: targetProjId,
           name: payload.name.trim(),
           order: payload.order || 0,
@@ -836,12 +834,10 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       // Status & completedAt handling
       const nextStatus = payload.status ? (payload.status.toUpperCase() as TaskStatus) : undefined;
       let completedAt: Date | undefined | null = undefined;
-      if (nextStatus) {
-        if (nextStatus === TaskStatus.DONE && existingTask.status !== TaskStatus.DONE) {
-          completedAt = new Date();
-        } else if (nextStatus !== TaskStatus.DONE && existingTask.status === TaskStatus.DONE) {
-          completedAt = null;
-        }
+      if (nextStatus && nextStatus !== existingTask.status) {
+        TaskStateMachine.assertValidTransition(existingTask.status, nextStatus);
+        const sideEffects = TaskStateMachine.getTransitionSideEffects(existingTask.status, nextStatus);
+        completedAt = sideEffects.completedAt;
       }
 
       const updated = await prisma.task.update({
@@ -1004,11 +1000,6 @@ export const ACTION_REGISTRY: Record<AiActionType, ActionDefinition> = {
       };
 
       await prisma.task.delete({ where: { id: targetId } });
-
-      await prisma.project.update({
-        where: { id: task.projectId },
-        data: { totalTasks: { decrement: 1 } },
-      }).catch(() => {});
 
       publishWorkspaceEvent(context.workspaceId, "TASK_DELETED", {
         id: targetId,

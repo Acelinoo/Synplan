@@ -16,6 +16,7 @@ function LoginContent() {
       try {
         document.cookie = "synplan_session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         localStorage.removeItem("synplan_active_ws");
+        localStorage.removeItem("synplan_active_workspace");
       } catch (e) {}
     }
   }, []);

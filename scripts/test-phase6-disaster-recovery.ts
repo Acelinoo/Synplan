@@ -11,7 +11,7 @@
  */
 
 import { prisma } from "../src/lib/prisma";
-import { Role, ProjectStatus, TaskStatus, TaskPriority } from "@prisma/client";
+import { Role, ProjectStatus, TaskStatus, TaskPriority, ProjectRole } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { GET as getBackupExportRoute } from "../src/app/api/admin/backup/export/route";
 import { GET as getDisasterRecoveryHealthRoute } from "../src/app/api/health/disaster-recovery/route";
@@ -122,14 +122,14 @@ async function runPhase6TestSuite() {
     data: {
       workspaceId: workspaceA.id,
       name: "Project Red Alpha",
+      slug: "project-red-alpha-" + Date.now(),
       description: "Mission critical Alpha project",
-      progress: 60,
       status: ProjectStatus.ACTIVE,
       color: "#6366F1",
       members: {
         create: [
-          { userId: userA.id, role: Role.OWNER },
-          { userId: userB.id, role: Role.MEMBER },
+          { userId: userA.id, role: ProjectRole.LEAD },
+          { userId: userB.id, role: ProjectRole.CONTRIBUTOR },
         ],
       },
     },
@@ -137,6 +137,7 @@ async function runPhase6TestSuite() {
 
   const phaseA1 = await prisma.phase.create({
     data: {
+      workspaceId: workspaceA.id,
       projectId: projectA.id,
       name: "Sprint 1 - Foundation",
       order: 1,
@@ -188,7 +189,7 @@ async function runPhase6TestSuite() {
     data: {
       workspaceId: workspaceB.id,
       name: "Foreign Secret Project in Beta",
-      progress: 10,
+      slug: "foreign-secret-project-" + Date.now(),
       status: ProjectStatus.PLANNING,
     },
   });

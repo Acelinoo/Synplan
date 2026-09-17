@@ -11,9 +11,9 @@ import {
   Info,
   Clock,
   ExternalLink,
-  Filter,
   CheckCircle2,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
 import { useNotificationStore, useWorkspaceStore, useUiStore } from "@/store";
 import { useRealtimeWorkspace } from "@/hooks/useRealtimeWorkspace";
@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const { activeWorkspace } = useWorkspaceStore();
+  const { activeWorkspace, currentUser } = useWorkspaceStore();
   const { addToast } = useUiStore();
   const {
     notifications,
@@ -42,7 +42,7 @@ export default function NotificationsPage() {
 
   const { onEvent } = useRealtimeWorkspace();
 
-  // Load notifications from API
+  // Load notifications from authoritative API
   const fetchNotifications = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -61,18 +61,27 @@ export default function NotificationsPage() {
     fetchNotifications();
   }, [fetchNotifications]);
 
-  // Realtime Subscriptions
+  // Realtime Subscriptions with User-Scoped Isolation
   React.useEffect(() => {
     const unsubCreated = onEvent("NOTIFICATION_CREATED", (event) => {
       const newNotif = event.payload;
+      if (currentUser?.id && newNotif?.userId && newNotif.userId !== currentUser.id) {
+        return;
+      }
       addNotification(newNotif);
     });
 
     const unsubRead = onEvent("NOTIFICATION_READ", (event) => {
+      if (currentUser?.id && event.payload?.userId && event.payload.userId !== currentUser.id) {
+        return;
+      }
       markAsRead(event.payload.id);
     });
 
-    const unsubReadAll = onEvent("NOTIFICATIONS_READ_ALL", () => {
+    const unsubReadAll = onEvent("NOTIFICATIONS_READ_ALL", (event) => {
+      if (currentUser?.id && event.payload?.userId && event.payload.userId !== currentUser.id) {
+        return;
+      }
       markAllAsRead();
     });
 
@@ -81,7 +90,7 @@ export default function NotificationsPage() {
       unsubRead();
       unsubReadAll();
     };
-  }, [onEvent, addNotification, markAsRead, markAllAsRead]);
+  }, [onEvent, addNotification, markAsRead, markAllAsRead, currentUser]);
 
   const handleMarkAsRead = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -104,6 +113,20 @@ export default function NotificationsPage() {
       });
     } catch (err) {
       console.warn("Error marking all read:", err);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    removeNotification(id);
+    try {
+      await apiClient.deleteNotification(id);
+      addToast({
+        title: "Notification Dismissed",
+        variant: "default",
+      });
+    } catch (err) {
+      console.warn("Error deleting notification:", err);
     }
   };
 
@@ -183,12 +206,25 @@ export default function NotificationsPage() {
 
         {/* Global Actions */}
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchNotifications}
+            className="h-9 gap-1.5 text-xs font-medium"
+            disabled={isLoading}
+            aria-label="Refresh notifications"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+
           {unreadCount > 0 && (
             <Button
               variant="outline"
               size="sm"
               onClick={handleMarkAllRead}
               className="h-9 gap-1.5 text-xs font-medium"
+              aria-label={`Mark all ${unreadCount} notifications as read`}
             >
               <CheckCheck className="h-4 w-4 text-primary" />
               Mark all as read ({unreadCount})
@@ -199,11 +235,13 @@ export default function NotificationsPage() {
 
       {/* Filter Tabs */}
       <div className="flex items-center justify-between border-b border-border/60 pb-3">
-        <div className="flex items-center gap-1.5 rounded-lg bg-surface/50 p-1 border border-border/40">
+        <div className="flex items-center gap-1.5 rounded-lg bg-surface/50 p-1 border border-border/40" role="tablist">
           <button
+            role="tab"
+            aria-selected={filter === "all"}
             onClick={() => setFilter("all")}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
               filter === "all"
                 ? "bg-primary text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
@@ -212,9 +250,11 @@ export default function NotificationsPage() {
             All ({notifications.length})
           </button>
           <button
+            role="tab"
+            aria-selected={filter === "unread"}
             onClick={() => setFilter("unread")}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
               filter === "unread"
                 ? "bg-primary text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
@@ -223,9 +263,11 @@ export default function NotificationsPage() {
             Unread ({unreadCount})
           </button>
           <button
+            role="tab"
+            aria-selected={filter === "read"}
             onClick={() => setFilter("read")}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
               filter === "read"
                 ? "bg-primary text-primary-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
@@ -262,10 +304,18 @@ export default function NotificationsPage() {
               <CheckCircle2 className="h-7 w-7 text-emerald-500/80" />
             </div>
             <h3 className="text-base font-semibold text-foreground">
-              No notifications yet
+              {filter === "unread"
+                ? "No unread notifications"
+                : filter === "read"
+                ? "No read notifications found"
+                : "No notifications yet"}
             </h3>
             <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-              You&apos;re all caught up! Direct assignments, squad invites, and status updates will appear here in realtime.
+              {filter === "unread"
+                ? "You're completely caught up! New assignments and project updates will appear here."
+                : filter === "read"
+                ? "Notifications you've already read will appear in this history."
+                : "Direct task assignments, project squad invites, and status updates will appear here in realtime."}
             </p>
           </div>
         ) : (
@@ -333,17 +383,26 @@ export default function NotificationsPage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+              <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                 {!notif.read && (
                   <button
                     onClick={(e) => handleMarkAsRead(notif.id, e)}
-                    className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-primary transition-colors border border-transparent hover:border-border"
+                    className="flex h-8 items-center gap-1 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-primary transition-colors border border-transparent hover:border-border cursor-pointer"
                     title="Mark as read"
+                    aria-label="Mark notification as read"
                   >
                     <CheckCheck className="h-3.5 w-3.5" />
                     <span className="hidden sm:inline">Mark read</span>
                   </button>
                 )}
+                <button
+                  onClick={(e) => handleDeleteNotification(notif.id, e)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500 transition-colors border border-transparent hover:border-rose-500/20 cursor-pointer"
+                  title="Dismiss notification"
+                  aria-label="Dismiss notification"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           ))

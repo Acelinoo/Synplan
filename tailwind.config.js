@@ -24,8 +24,10 @@ module.exports = {
           border: "var(--card-border)",
         },
         surface: {
-          DEFAULT: "var(--card)",
+          DEFAULT: "var(--surface)",
           foreground: "var(--card-foreground)",
+          muted: "var(--surface-muted)",
+          elevated: "var(--surface-elevated)",
         },
         popover: {
           DEFAULT: "var(--popover)",
@@ -53,15 +55,21 @@ module.exports = {
           DEFAULT: "var(--destructive)",
           foreground: "var(--destructive-foreground)",
         },
-        border: "var(--border)",
+        border: {
+          DEFAULT: "var(--border)",
+          subtle: "var(--border-subtle)",
+          strong: "var(--border-strong)",
+        },
         input: "var(--input)",
         ring: "var(--ring)",
         status: {
+          backlog: "var(--status-backlog)",
           todo: "var(--status-todo)",
           progress: "var(--status-progress)",
           review: "var(--status-review)",
           done: "var(--status-done)",
           blocked: "var(--status-blocked)",
+          cancelled: "var(--status-cancelled)",
         },
         priority: {
           low: "var(--priority-low)",
@@ -71,9 +79,12 @@ module.exports = {
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        xs: "var(--radius-xs, 2px)",
+        sm: "var(--radius-sm, 4px)",
+        md: "var(--radius-md, 6px)",
+        lg: "var(--radius-lg, 8px)",
+        xl: "var(--radius-xl, 12px)",
+        full: "9999px",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "Inter", "sans-serif"],

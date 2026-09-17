@@ -39,13 +39,8 @@ export async function GET(req: NextRequest) {
             { description: { contains: query, mode: "insensitive" } },
           ],
         },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          color: true,
-          status: true,
-          progress: true,
+        include: {
+          tasks: { select: { status: true } },
         },
         take: 5,
       }),
@@ -88,14 +83,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        projects: projects.map((p) => ({
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          color: p.color,
-          status: p.status,
-          progress: p.progress,
-        })),
+        projects: projects.map((p) => {
+          const total = p.tasks.length;
+          const completed = p.tasks.filter((t) => t.status === "DONE").length;
+          const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+          return {
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            color: p.color,
+            status: p.status,
+            progress,
+          };
+        }),
         tasks: tasks.map((t) => ({
           id: t.id,
           title: t.title,

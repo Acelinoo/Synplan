@@ -8,7 +8,6 @@ import { MonthView } from "@/components/calendar/MonthView";
 import { WeekView } from "@/components/calendar/WeekView";
 import { DayView } from "@/components/calendar/DayView";
 import { TaskDetailDrawer } from "@/components/kanban/TaskDetailDrawer";
-import { AnimatedGrid } from "@/components/ui/animated-grid";
 import { apiClient } from "@/lib/apiClient";
 
 export default function CalendarPage() {
@@ -77,8 +76,6 @@ export default function CalendarPage() {
 
   return (
     <div className="relative flex flex-col gap-6">
-      <AnimatedGrid />
-
       {/* Calendar Header with Navigation and View Toggles */}
       <CalendarHeader
         currentTitle={titleString}

@@ -213,8 +213,13 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     const { auth, errorResponse } = await requireAuthGuard(req, "tasks.delete", existing.workspaceId);
     if (errorResponse || !auth) return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
-    // Delete subtasks, comments and task in transaction
+    // Delete dependencies, subtasks, comments and task in transaction
     await prisma.$transaction([
+      prisma.taskDependency.deleteMany({
+        where: {
+          OR: [{ blockingTaskId: id }, { blockedTaskId: id }],
+        },
+      }),
       prisma.subtask.deleteMany({ where: { taskId: id } }),
       prisma.taskComment.deleteMany({ where: { taskId: id } }),
       prisma.task.delete({ where: { id } }),

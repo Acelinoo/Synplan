@@ -1,8 +1,5 @@
-"use client";
-
 import * as React from "react";
 import { Shield, Check, X } from "lucide-react";
-import { SpotlightCard } from "@/components/ui/spotlight-card";
 
 interface PermissionRow {
   permission: string;
@@ -18,12 +15,13 @@ const rbacMatrix: PermissionRow[] = [
   { permission: "Edit & Move Tasks", description: "Update task status, assignees, checklists, and due dates", owner: true, admin: true, member: true, viewer: false },
   { permission: "Invite & Manage Squad", description: "Send workspace invitations and assign roles", owner: true, admin: true, member: false, viewer: false },
   { permission: "View Analytics & Export", description: "Access sprint velocity charts and download reports", owner: true, admin: true, member: true, viewer: true },
-  { permission: "Workspace Security & Billing", description: "Access audit telemetry and billing tier controls", owner: true, admin: false, member: false, viewer: false },
+  { permission: "Workspace Configuration & Settings", description: "Access workspace profile, URL slug, and tenant properties", owner: true, admin: true, member: false, viewer: false },
+  { permission: "Disaster Recovery Export", description: "Export complete workspace database archive", owner: true, admin: true, member: false, viewer: false },
 ];
 
 export function RbacMatrixTable() {
   return (
-    <SpotlightCard className="space-y-4">
+    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2.5">
           <Shield className="h-4 w-4 text-primary" />
@@ -72,6 +70,6 @@ export function RbacMatrixTable() {
           </tbody>
         </table>
       </div>
-    </SpotlightCard>
+    </div>
   );
 }

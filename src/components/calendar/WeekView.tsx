@@ -11,10 +11,13 @@ interface WeekViewProps {
 }
 
 const statusColorMap: Record<TaskStatus, { bg: string; text: string; border: string }> = {
+  backlog: { bg: "bg-muted/10", text: "text-muted-foreground", border: "border-border/30" },
   todo: { bg: "bg-status-todo/10", text: "text-muted-foreground", border: "border-status-todo/30" },
   in_progress: { bg: "bg-status-progress/10", text: "text-status-progress", border: "border-status-progress/30" },
   in_review: { bg: "bg-status-review/10", text: "text-status-review", border: "border-status-review/30" },
   done: { bg: "bg-status-done/10", text: "text-status-done", border: "border-status-done/30" },
+  blocked: { bg: "bg-red-500/10", text: "text-red-500", border: "border-red-500/30" },
+  cancelled: { bg: "bg-muted/20", text: "text-muted-foreground", border: "border-muted" },
 };
 
 export function WeekView({ currentDate, tasks, onSelectTask }: WeekViewProps) {

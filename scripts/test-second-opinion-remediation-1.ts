@@ -93,6 +93,7 @@ async function runRemediationVerification() {
     data: {
       workspaceId: workspaceA.id,
       name: `Project Alpha ${timestamp}`,
+      slug: `project-alpha-${timestamp}`,
       status: "ACTIVE",
     },
   });
@@ -101,19 +102,20 @@ async function runRemediationVerification() {
     data: {
       workspaceId: workspaceB.id,
       name: `Project Beta ${timestamp}`,
+      slug: `project-beta-${timestamp}`,
       status: "ACTIVE",
     },
   });
 
   const phaseA1 = await prisma.phase.create({
-    data: { projectId: projectA.id, name: "Discovery", order: 0 },
+    data: { workspaceId: workspaceA.id, projectId: projectA.id, name: "Discovery", order: 0 },
   });
   const phaseA2 = await prisma.phase.create({
-    data: { projectId: projectA.id, name: "Execution", order: 1 },
+    data: { workspaceId: workspaceA.id, projectId: projectA.id, name: "Execution", order: 1 },
   });
 
   const phaseB1 = await prisma.phase.create({
-    data: { projectId: projectB.id, name: "Beta Discovery", order: 0 },
+    data: { workspaceId: workspaceB.id, projectId: projectB.id, name: "Beta Discovery", order: 0 },
   });
 
   console.log("──────────────────────────────────────────────────────────────────────");

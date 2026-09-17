@@ -7,7 +7,6 @@ import { applyRateLimit, apiRateLimiter } from "@/lib/rateLimit";
 import { validateRequestBody } from "@/lib/validation/apiValidator";
 import { MarkNotificationSchema } from "@/lib/validation/schemas";
 import { createApiErrorResponse } from "@/lib/apiErrors";
-
 import { parsePaginationParams } from "@/lib/pagination";
 
 // GET /api/notifications - List user notifications for authenticated session
@@ -40,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     const queryOptions: any = {
       where: whereClause,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: pagination.limit,
     };
 
@@ -63,22 +62,28 @@ export async function GET(req: NextRequest) {
     ]);
 
     const totalPages = Math.ceil(total / pagination.limit) || 1;
-    const hasMore = pagination.page < totalPages || (notifications.length === pagination.limit && notifications.length > 0);
-    const nextCursor = hasMore && notifications.length > 0 ? notifications[notifications.length - 1].id : null;
+    const hasMore =
+      pagination.page < totalPages ||
+      (notifications.length === pagination.limit && notifications.length > 0);
+    const nextCursor =
+      hasMore && notifications.length > 0 ? notifications[notifications.length - 1].id : null;
 
-    return NextResponse.json({
-      success: true,
-      data: notifications,
-      unreadCount,
-      pagination: {
-        total,
-        page: pagination.page,
-        limit: pagination.limit,
-        totalPages,
-        hasMore,
-        nextCursor,
+    return NextResponse.json(
+      {
+        success: true,
+        data: notifications,
+        unreadCount,
+        pagination: {
+          total,
+          page: pagination.page,
+          limit: pagination.limit,
+          totalPages,
+          hasMore,
+          nextCursor,
+        },
       },
-    }, { headers: rateLimit.rateLimitHeaders });
+      { headers: rateLimit.rateLimitHeaders }
+    );
   } catch (error: any) {
     return createApiErrorResponse(error, "Failed to retrieve notifications");
   }
@@ -116,22 +121,37 @@ export async function PATCH(req: NextRequest) {
         workspaceId: auth.workspaceId,
       });
 
-      return NextResponse.json({
-        success: true,
-        message: "All notifications marked as read",
-      }, { headers: rateLimit.rateLimitHeaders });
+      return NextResponse.json(
+        {
+          success: true,
+          message: "All notifications marked as read",
+        },
+        { headers: rateLimit.rateLimitHeaders }
+      );
     }
 
     if (id) {
-      // Ensure user owns this notification
-      const existing = await prisma.notification.findFirst({
-        where: { id, userId: auth.userId },
+      // Find notification by ID
+      const existing = await prisma.notification.findUnique({
+        where: { id },
       });
 
       if (!existing) {
         return NextResponse.json(
-          { success: false, error: "Not Found", message: "Notification not found or unauthorized" },
+          { success: false, error: "Not Found", message: "Notification not found" },
           { status: 404 }
+        );
+      }
+
+      // Security check: Verify user owns this notification and matches active workspace
+      if (existing.userId !== auth.userId || existing.workspaceId !== auth.workspaceId) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Forbidden",
+            message: "Cannot modify notification belonging to another user or workspace",
+          },
+          { status: 403 }
         );
       }
 
@@ -140,17 +160,20 @@ export async function PATCH(req: NextRequest) {
         data: { read: true },
       });
 
-      // Broadcast single mark-read
+      // Broadcast single mark-read to user's clients
       await publishWorkspaceEvent(auth, "NOTIFICATION_READ", {
         id: updated.id,
         userId: auth.userId,
       });
 
-      return NextResponse.json({
-        success: true,
-        data: updated,
-        message: "Notification marked as read",
-      }, { headers: rateLimit.rateLimitHeaders });
+      return NextResponse.json(
+        {
+          success: true,
+          data: updated,
+          message: "Notification marked as read",
+        },
+        { headers: rateLimit.rateLimitHeaders }
+      );
     }
 
     return NextResponse.json(
@@ -159,5 +182,70 @@ export async function PATCH(req: NextRequest) {
     );
   } catch (error: any) {
     return createApiErrorResponse(error, "Failed to update notification");
+  }
+}
+
+// DELETE /api/notifications - Delete a specific notification for authenticated user
+export async function DELETE(req: NextRequest) {
+  try {
+    const rateLimit = applyRateLimit(req, apiRateLimiter);
+    if (rateLimit.errorResponse) return rateLimit.errorResponse;
+
+    const { auth, errorResponse } = await requireAuthGuard(req, Role.VIEWER);
+    if (errorResponse || !auth) {
+      return errorResponse || NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    let id = searchParams.get("id");
+
+    if (!id) {
+      const body = await req.json().catch(() => ({}));
+      id = body?.id;
+    }
+
+    if (!id || typeof id !== "string") {
+      return NextResponse.json(
+        { success: false, error: "Bad Request", message: "Notification ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.notification.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: "Not Found", message: "Notification not found" },
+        { status: 404 }
+      );
+    }
+
+    // Security check: Verify user owns this notification and matches active workspace
+    if (existing.userId !== auth.userId || existing.workspaceId !== auth.workspaceId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Forbidden",
+          message: "Cannot delete notification belonging to another user or workspace",
+        },
+        { status: 403 }
+      );
+    }
+
+    await prisma.notification.delete({
+      where: { id },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Notification deleted successfully",
+      },
+      { headers: rateLimit.rateLimitHeaders }
+    );
+  } catch (error: any) {
+    return createApiErrorResponse(error, "Failed to delete notification");
   }
 }
