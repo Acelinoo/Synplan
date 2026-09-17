@@ -42,7 +42,7 @@ export function WeekView({ currentDate, tasks, onSelectTask }: WeekViewProps) {
   });
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+    <div className="rounded-lg border border-border bg-card overflow-hidden shadow-2xs">
       {/* 7 Days Column Header */}
       <div className="grid grid-cols-7 border-b border-border bg-surface/60 divide-x divide-border">
         {weekDays.map((wd) => (

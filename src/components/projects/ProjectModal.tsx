@@ -361,7 +361,7 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-xl rounded-2xl border border-border bg-card shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-xl rounded-lg border border-border bg-card shadow-xl animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4 bg-surface/40">
           <div className="flex items-center gap-3">
@@ -369,13 +369,13 @@ export function ProjectModal({ editingProject, onClose }: ProjectModalProps) {
               <button
                 type="button"
                 onClick={() => setModalMode("CHOICE")}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 title="Back to options"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
             )}
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
               {modalMode === "AI" ? (
                 <Bot className="h-5 w-5" />
               ) : (

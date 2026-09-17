@@ -80,7 +80,7 @@ export function ProjectListView({
 
     if (totalGlobalTasks === 0) {
       return (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center space-y-3">
+        <div className="rounded-lg border border-dashed border-border p-12 text-center space-y-3">
           <Layers className="h-8 w-8 mx-auto text-muted-foreground/60" />
           <h3 className="text-sm font-bold text-foreground">No Tasks in Workspace</h3>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto">
@@ -106,7 +106,7 @@ export function ProjectListView({
           return (
             <div
               key={group.project.id}
-              className="rounded-xl border border-border bg-card shadow-xs overflow-hidden"
+              className="rounded-lg border border-border bg-card shadow-xs overflow-hidden"
             >
               {/* Project Header */}
               <div
@@ -255,7 +255,7 @@ export function ProjectListView({
 
   if (totalTasks === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border p-12 text-center space-y-3">
+      <div className="rounded-lg border border-dashed border-border p-12 text-center space-y-3">
         <Layers className="h-8 w-8 mx-auto text-muted-foreground/60" />
         <h3 className="text-sm font-bold text-foreground">No Tasks in Project</h3>
         <p className="text-xs text-muted-foreground max-w-sm mx-auto">
@@ -284,7 +284,7 @@ export function ProjectListView({
         return (
           <div
             key={phase.id}
-            className="rounded-xl border border-border bg-card shadow-xs overflow-hidden"
+            className="rounded-lg border border-border bg-card shadow-xs overflow-hidden"
           >
             {/* Phase Header */}
             <div
@@ -425,7 +425,7 @@ export function ProjectListView({
 
       {/* Ungrouped Tasks (tasks not assigned to any phase) */}
       {ungroupedTasks.length > 0 && (
-        <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+        <div className="rounded-lg border border-border bg-card shadow-xs overflow-hidden">
           <div className="flex items-center justify-between p-3.5 bg-surface-muted/60 border-b border-border/50">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-xs text-foreground uppercase tracking-wider">

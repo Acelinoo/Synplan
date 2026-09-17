@@ -164,7 +164,7 @@ export function KanbanCard({ task, onEdit, onSelect }: KanbanCardProps) {
       <div
         onClick={() => onSelect(task)}
         className={cn(
-          "group relative cursor-pointer rounded-lg border border-border/80 bg-card p-3.5 shadow-sm transition-all duration-200 hover:border-primary/50 hover:shadow-md select-none",
+          "group relative cursor-pointer rounded-lg border border-border bg-card p-3 shadow-2xs transition-all duration-200 hover:border-border-strong hover:shadow-xs select-none",
           isRecentDone && "ring-2 ring-status-done shadow-status-done/20 bg-status-done/5 animate-pulse"
         )}
       >
@@ -355,7 +355,7 @@ export function KanbanCard({ task, onEdit, onSelect }: KanbanCardProps) {
             className="fixed inset-0"
             onClick={() => !isDeleting && setIsDeleteConfirmOpen(false)}
           />
-          <div className="relative w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl animate-in zoom-in-95">
+          <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl animate-in zoom-in-95">
             <h3 className="text-sm font-bold text-foreground">Delete Task</h3>
             <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
               Are you sure you want to delete <span className="font-semibold text-foreground">&quot;{task.title}&quot;</span>? This action cannot be undone.

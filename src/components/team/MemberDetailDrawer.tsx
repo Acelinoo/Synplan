@@ -186,7 +186,7 @@ export function MemberDetailDrawer({
             </div>
 
             {/* Role Management Card */}
-            <div className="rounded-xl border border-border bg-surface/30 p-4 space-y-3">
+            <div className="rounded-lg border border-border bg-surface/30 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-semibold text-foreground">
                   <Shield className="h-4 w-4 text-primary" />
@@ -229,7 +229,7 @@ export function MemberDetailDrawer({
             </div>
 
             {/* Workload Capacity & Task Telemetry */}
-            <div className="rounded-xl border border-border bg-surface/30 p-4 space-y-3.5">
+            <div className="rounded-lg border border-border bg-surface/30 p-4 space-y-3.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-semibold text-foreground">
                   <BarChart3 className="h-4 w-4 text-primary" />
@@ -281,7 +281,7 @@ export function MemberDetailDrawer({
             </div>
 
             {/* Project Involvement Card */}
-            <div className="rounded-xl border border-border bg-surface/30 p-4 space-y-3">
+            <div className="rounded-lg border border-border bg-surface/30 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-semibold text-foreground">
                   <FolderGit2 className="h-4 w-4 text-primary" />
@@ -328,7 +328,7 @@ export function MemberDetailDrawer({
             </div>
 
             {/* Membership Metadata Card */}
-            <div className="rounded-xl border border-border bg-surface/30 p-4 space-y-2.5">
+            <div className="rounded-lg border border-border bg-surface/30 p-4 space-y-2.5">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-muted-foreground">Workspace Membership ID</span>
                 <span className="font-mono text-foreground">{member.id}</span>
@@ -371,7 +371,7 @@ export function MemberDetailDrawer({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="fixed inset-0" onClick={() => setIsDeleteConfirmOpen(false)} />
-          <div className="relative w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+          <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
             <div className="flex items-center gap-2.5 text-destructive">
               <AlertTriangle className="h-5 w-5" />
               <h4 className="text-sm font-bold text-foreground">Remove Squad Member</h4>

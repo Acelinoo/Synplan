@@ -50,51 +50,48 @@ function LoginContent() {
 
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center bg-background p-4 overflow-hidden select-none">
-      {/* Subtle Background Glow */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
-
       {/* Main Authentication Card */}
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-border/80 bg-card p-8 shadow-2xl transition-all duration-300">
+      <div className="relative z-10 w-full max-w-md rounded-lg border border-border bg-card p-8 shadow-xl transition-all duration-200">
         {/* Brand Header */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-primary text-primary-foreground shadow-xs mb-1">
-            <FolderKanban className="h-7 w-7" />
+          <div className="inline-flex items-center justify-center p-2.5 rounded-md bg-primary text-primary-foreground shadow-xs mb-1">
+            <FolderKanban className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-foreground sm:text-3xl">
-              Welcome to Synplan
+            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl font-mono">
+              Synplan
             </h1>
-            <p className="text-sm font-medium text-muted-foreground mt-1">
-              Plan smarter. Work better.
+            <p className="text-xs font-medium text-muted-foreground mt-1">
+              Precision Delivery & Operations Workspace
             </p>
           </div>
         </div>
 
         {/* Error Alert if redirected from OAuth failure */}
         {errorMessage && (
-          <div className="mt-6 flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-xs text-destructive animate-in fade-in slide-in-from-top-2">
+          <div className="mt-6 flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive animate-in fade-in slide-in-from-top-2">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
             <div className="flex-1 leading-relaxed">
-              <span className="font-semibold block mb-0.5">Autentikasi Terkendala</span>
+              <span className="font-semibold block mb-0.5">Authentication Error</span>
               {errorMessage}
             </div>
           </div>
         )}
 
         {/* OAuth Authentication Buttons */}
-        <div className="mt-8 space-y-3.5">
+        <div className="mt-8 space-y-3">
           {/* Google OAuth Button */}
           <button
             id="google-login-button"
             type="button"
             disabled={loadingProvider !== null}
             onClick={() => handleOAuthLogin("google")}
-            className="group relative flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-3.5 text-sm font-semibold text-foreground shadow-xs transition-all duration-200 hover:bg-muted hover:border-primary/40 hover:shadow-xs active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            className="group relative flex w-full items-center justify-center gap-3 rounded-md border border-border bg-surface px-4 py-2.5 text-xs sm:text-sm font-semibold text-foreground shadow-2xs transition-all duration-150 hover:bg-surface-muted hover:border-border-strong hover:shadow-xs active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             {loadingProvider === "google" ? (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             ) : (
-              <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
+              <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
@@ -122,12 +119,12 @@ function LoginContent() {
             type="button"
             disabled={loadingProvider !== null}
             onClick={() => handleOAuthLogin("github")}
-            className="group relative flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-surface px-4 py-3.5 text-sm font-semibold text-foreground shadow-xs transition-all duration-200 hover:bg-muted hover:border-primary/40 hover:shadow-xs active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            className="group relative flex w-full items-center justify-center gap-3 rounded-md border border-border bg-surface px-4 py-2.5 text-xs sm:text-sm font-semibold text-foreground shadow-2xs transition-all duration-150 hover:bg-surface-muted hover:border-border-strong hover:shadow-xs active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             {loadingProvider === "github" ? (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             ) : (
-              <svg className="h-5 w-5 shrink-0 fill-current text-foreground" viewBox="0 0 24 24">
+              <svg className="h-4 w-4 shrink-0 fill-current text-foreground" viewBox="0 0 24 24">
                 <path
                   fillRule="evenodd"
                   clipRule="evenodd"

@@ -327,7 +327,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
           </div>
 
           {/* Metadata Grid */}
-          <div className="rounded-xl border border-border bg-input/20 p-4 space-y-3">
+          <div className="rounded-lg border border-border bg-surface-muted/30 p-4 space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground flex items-center gap-2">
                 <Layers className="h-3.5 w-3.5" /> Status

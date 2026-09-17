@@ -32,7 +32,7 @@ export function ThemeSettingsPanel() {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 space-y-5">
+    <div className="rounded-lg border border-border bg-card p-5 space-y-5 shadow-2xs">
       <div className="flex items-center gap-2.5 border-b border-border pb-3">
         <Palette className="h-4 w-4 text-primary" />
         <div>

@@ -20,17 +20,17 @@ export default function ActivityLoading() {
       </div>
 
       {/* Filter Toolbar Skeleton */}
-      <div className="rounded-2xl border border-border/60 bg-card/60 p-4 space-y-3">
+      <div className="rounded-lg border border-border bg-card p-4 space-y-3 shadow-2xs">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <Skeleton className="h-9 flex-1 rounded-xl" />
-          <Skeleton className="h-9 w-full sm:w-44 rounded-xl" />
-          <Skeleton className="h-9 w-full sm:w-44 rounded-xl" />
+          <Skeleton className="h-8.5 flex-1 rounded-md" />
+          <Skeleton className="h-8.5 w-full sm:w-44 rounded-md" />
+          <Skeleton className="h-8.5 w-full sm:w-44 rounded-md" />
         </div>
         <div className="flex gap-2 pt-2 border-t border-border/40">
-          <Skeleton className="h-7 w-20 rounded-lg" />
-          <Skeleton className="h-7 w-16 rounded-lg" />
-          <Skeleton className="h-7 w-20 rounded-lg" />
-          <Skeleton className="h-7 w-20 rounded-lg" />
+          <Skeleton className="h-7 w-20 rounded-md" />
+          <Skeleton className="h-7 w-16 rounded-md" />
+          <Skeleton className="h-7 w-20 rounded-md" />
+          <Skeleton className="h-7 w-20 rounded-md" />
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { Activity, ArrowRight } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
 import { useWorkspaceStore } from "@/store";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,8 +28,9 @@ export function RecentActivityFeed() {
   const { onEvent } = useRealtime();
   const [activities, setActivities] = React.useState<ActivityItem[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // --- Realtime Activity Feed Live Synchronization ---
+  // Realtime Activity Feed Synchronization
   React.useEffect(() => {
     const unsubActivity = onEvent("ACTIVITY_CREATED", (event) => {
       const raw = event.payload;
@@ -70,8 +72,6 @@ export function RecentActivityFeed() {
     };
   }, [onEvent]);
 
-  const [error, setError] = React.useState<string | null>(null);
-
   React.useEffect(() => {
     if (!activeWorkspace?.id || !isWorkspaceValidated) {
       setIsLoading(true);
@@ -83,7 +83,7 @@ export function RecentActivityFeed() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await apiClient.getActivity({ workspaceId: wsId, limit: 5 });
+        const res = await apiClient.getActivity({ workspaceId: wsId, limit: 6 });
         if (!isMounted) return;
         if (res.success && Array.isArray(res.data?.items)) {
           const liveActs = res.data.items.map((act: any) => {
@@ -105,7 +105,7 @@ export function RecentActivityFeed() {
                 initial: actorName ? actorName.charAt(0).toUpperCase() : "U",
               },
               action: (act.action || "updated").toLowerCase().replace(/_/g, " "),
-              target: act.target || "task delivery milestone",
+              target: act.target || "delivery milestone",
               timestamp: act.timestamp ? new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Just now",
               entityType: act.entityType,
               entityId: act.entityId,
@@ -137,35 +137,39 @@ export function RecentActivityFeed() {
     };
   }, [activeWorkspace?.id, isWorkspaceValidated]);
 
-  const handleActivityClick = (act: ActivityItem) => {
-    if (act.link) {
-      router.push(act.link);
-    }
-  };
-
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-xs flex flex-col justify-between">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-5 shadow-2xs flex flex-col justify-between">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-border/40">
+      <div className="flex items-center justify-between pb-3 border-b border-border/60">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm sm:text-base font-bold text-foreground">Recent Workspace Activity</h2>
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
-            {activities.length} Total
+          <Activity className="h-4 w-4 text-primary" />
+          <h2 className="text-xs sm:text-sm font-bold tracking-tight text-foreground uppercase font-mono">
+            Recent Activity Audit
+          </h2>
+          <span className="rounded-full bg-primary/10 border border-primary/20 px-2 py-0.2 text-[10px] font-mono font-bold text-primary">
+            Live Stream
           </span>
         </div>
+        <button
+          onClick={() => router.push("/activity")}
+          className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+        >
+          <span>View All Activity</span>
+          <ArrowRight className="h-3 w-3" />
+        </button>
       </div>
 
-      {/* Stream List (Max 5 items visible, internal scroll on overflow) */}
+      {/* Stream List */}
       <div className="mt-3">
         {isLoading ? (
-          <div className="space-y-3 py-2">
-            {[1, 2, 3, 4, 5].map((i) => (
+          <div className="space-y-3 py-1">
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="flex items-center justify-between gap-3 py-2 border-b border-border/30 last:border-0">
                 <div className="flex items-center gap-3 flex-1">
                   <Skeleton className="h-6 w-6 rounded-full shrink-0" />
                   <Skeleton className="h-3.5 w-3/4 rounded" />
                 </div>
-                <Skeleton className="h-3 w-16 rounded" />
+                <Skeleton className="h-3 w-14 rounded" />
               </div>
             ))}
           </div>
@@ -178,40 +182,38 @@ export function RecentActivityFeed() {
             No recent activity recorded yet in this workspace.
           </div>
         ) : (
-          <div
-            className="space-y-1 max-h-[240px] overflow-y-auto pr-1"
-            tabIndex={0}
-            aria-label="Recent activity list"
-          >
+          <div className="divide-y divide-border/30">
             {activities.map((act) => (
               <div
                 key={act.id}
                 tabIndex={0}
                 role="button"
                 aria-label={`View activity: ${act.actor.name} ${act.action} ${act.target}`}
-                onClick={() => handleActivityClick(act)}
+                onClick={() => act.link && router.push(act.link)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if ((e.key === "Enter" || e.key === " ") && act.link) {
                     e.preventDefault();
-                    handleActivityClick(act);
+                    router.push(act.link);
                   }
                 }}
-                className="group flex items-center justify-between gap-3 py-2.5 border-b border-border/30 last:border-0 hover:bg-muted/20 focus:bg-muted/20 focus:outline-hidden rounded-lg px-2 transition-colors cursor-pointer"
+                className="group flex items-center justify-between gap-3 py-2.5 px-2 hover:bg-surface-muted/50 rounded-md transition-colors cursor-pointer"
               >
                 {/* Avatar Initial + Text */}
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold font-mono shadow-xs">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold font-mono shadow-2xs">
                     {act.actor.initial}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">
-                    <span className="font-semibold text-foreground mr-1.5 group-hover:text-primary transition-colors">{act.actor.name}</span>
-                    <span>{act.action}</span>{" "}
+                    <span className="font-semibold text-foreground mr-1.5 group-hover:text-primary transition-colors">
+                      {act.actor.name}
+                    </span>
+                    <span className="text-foreground/80">{act.action}</span>{" "}
                     <span className="font-medium text-foreground">&ldquo;{act.target}&rdquo;</span>
                   </p>
                 </div>
 
                 {/* Timestamp */}
-                <span className="text-[11px] sm:text-xs font-mono text-muted-foreground whitespace-nowrap shrink-0 text-right ml-2">
+                <span className="text-[11px] font-mono text-muted-foreground whitespace-nowrap shrink-0 text-right ml-2">
                   {act.timestamp}
                 </span>
               </div>

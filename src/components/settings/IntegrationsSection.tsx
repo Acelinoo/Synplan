@@ -31,7 +31,7 @@ export function IntegrationsSection() {
   return (
     <div className="space-y-6">
       {/* Overview Card */}
-      <div className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 sm:p-6 space-y-4">
         <div className="flex items-center gap-2.5 border-b border-border pb-4">
           <div className="rounded-lg bg-primary/10 p-2 text-primary">
             <Blocks className="h-4 w-4" />
@@ -49,7 +49,7 @@ export function IntegrationsSection() {
       </div>
 
       {/* Single Sign-On Identity Integrations */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
             Active Single Sign-On (SSO) Providers
@@ -101,7 +101,7 @@ export function IntegrationsSection() {
       </div>
 
       {/* External Service Ecosystem (Planned Integrations) */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-muted-foreground" />

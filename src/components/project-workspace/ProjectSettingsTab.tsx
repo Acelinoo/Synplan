@@ -148,7 +148,7 @@ export function ProjectSettingsTab({
       {/* 1. General Project Details */}
       <form
         onSubmit={handleSaveGeneral}
-        className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-xs"
+        className="rounded-lg border border-border bg-card p-5 space-y-4 shadow-xs"
       >
         <div className="border-b border-border/60 pb-3">
           <h3 className="text-sm font-bold text-foreground">Project Configuration</h3>
@@ -248,7 +248,7 @@ export function ProjectSettingsTab({
       </form>
 
       {/* 2. Phase Management */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-xs">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4 shadow-xs">
         <div className="border-b border-border/60 pb-3">
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-primary" />
@@ -269,7 +269,7 @@ export function ProjectSettingsTab({
       </div>
 
       {/* 3. Team Membership Roster */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-xs">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4 shadow-xs">
         <div className="border-b border-border/60 pb-3">
           <div className="flex items-center gap-2">
             <Users2 className="h-4 w-4 text-primary" />
@@ -318,7 +318,7 @@ export function ProjectSettingsTab({
 
       {/* 4. Danger Zone */}
       {canManageSettings && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-5 space-y-4">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-5 space-y-4">
           <div className="border-b border-destructive/20 pb-3">
             <div className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-4 w-4" />

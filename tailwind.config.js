@@ -86,6 +86,11 @@ module.exports = {
         xl: "var(--radius-xl, 12px)",
         full: "9999px",
       },
+      boxShadow: {
+        "2xs": "0 1px 2px 0 rgba(0, 0, 0, 0.03)",
+        xs: "0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)",
+        subtle: "0 1px 2px 0 rgba(0, 0, 0, 0.04)",
+      },
       fontFamily: {
         sans: ["var(--font-sans)", "Inter", "sans-serif"],
         mono: ["var(--font-mono)", "JetBrains Mono", "monospace"],

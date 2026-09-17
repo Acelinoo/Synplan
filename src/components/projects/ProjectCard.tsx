@@ -100,8 +100,8 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
           }
         }}
         className={cn(
-          "group relative flex flex-col justify-between rounded-xl border border-border bg-card p-4.5 shadow-xs transition-all cursor-pointer select-none",
-          "hover:border-border-strong hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          "group relative flex flex-col justify-between rounded-lg border border-border bg-card p-4 shadow-2xs transition-all cursor-pointer select-none",
+          "hover:border-border-strong hover:shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         )}
       >
         {/* Card Header: Color Swatch + Status Badge + Options Menu */}
@@ -264,7 +264,7 @@ export function ProjectCard({ project, onEdit }: ProjectCardProps) {
             className="fixed inset-0"
             onClick={() => !isDeleting && setIsDeleteConfirmOpen(false)}
           />
-          <div className="relative w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl animate-in zoom-in-95">
+          <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl animate-in zoom-in-95">
             <h3 id="delete-dialog-title" className="text-sm font-bold text-foreground">
               Delete Project
             </h3>

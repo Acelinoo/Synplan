@@ -558,7 +558,7 @@ export function AiAssistantDrawer() {
                 {/* Message Bubble */}
                 <div
                   className={cn(
-                    "rounded-2xl px-4 py-3 text-xs sm:text-sm leading-relaxed shadow-xs",
+                    "rounded-lg px-3.5 py-2.5 text-xs sm:text-sm leading-relaxed shadow-2xs",
                     msg.role === "user"
                       ? "bg-primary text-primary-foreground font-medium rounded-tr-xs"
                       : "bg-surface border border-border text-foreground rounded-tl-xs"
@@ -568,7 +568,7 @@ export function AiAssistantDrawer() {
 
                   {/* Plan Preview Card if Assistant generated a plan */}
                   {msg.plan && (
-                    <div className="mt-3 space-y-3 rounded-xl border border-border/80 bg-card p-3.5 text-foreground">
+                    <div className="mt-3 space-y-3 rounded-lg border border-border bg-card p-3.5 text-foreground">
                       <div className="flex items-center justify-between border-b border-border/60 pb-2">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-xs text-primary flex items-center gap-1.5">

@@ -61,7 +61,7 @@ export function MonthView({ currentDate, tasks, onSelectDate, onSelectTask }: Mo
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+    <div className="rounded-lg border border-border bg-card overflow-hidden shadow-2xs">
       {/* Weekday labels */}
       <div className="grid grid-cols-7 border-b border-border bg-surface/60 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
         {weekDays.map((w) => (

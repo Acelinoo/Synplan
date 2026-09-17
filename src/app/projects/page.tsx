@@ -320,7 +320,7 @@ function ProjectsDirectoryContent() {
       )}
 
       {/* 3. Directory Toolbar */}
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-xs">
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-2xs">
         {/* Top Toolbar Row: Search, Sort & View Mode Switcher */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Search Input */}
@@ -448,7 +448,7 @@ function ProjectsDirectoryContent() {
       {/* 4. Projects Directory Presentation */}
       {projects.length === 0 ? (
         /* Empty Workspace State */
-        <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center space-y-3">
+        <div className="rounded-lg border border-dashed border-border bg-card p-12 text-center space-y-3">
           <FolderKanban className="h-10 w-10 mx-auto text-muted-foreground/60" />
           <h3 className="text-sm font-bold text-foreground">No Projects in Workspace</h3>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
@@ -470,7 +470,7 @@ function ProjectsDirectoryContent() {
         </div>
       ) : filteredProjects.length === 0 ? (
         /* Filtered Empty State */
-        <div className="rounded-xl border border-dashed border-border bg-card p-12 text-center space-y-3">
+        <div className="rounded-lg border border-dashed border-border bg-card p-12 text-center space-y-3">
           <FolderKanban className="h-9 w-9 mx-auto text-muted-foreground/60" />
           <h3 className="text-sm font-bold text-foreground">No matching projects</h3>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
@@ -498,7 +498,7 @@ function ProjectsDirectoryContent() {
         </div>
       ) : (
         /* Dense List View */
-        <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+        <div className="rounded-lg border border-border bg-card shadow-2xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>

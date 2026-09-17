@@ -644,7 +644,7 @@ export default function GlobalTasksPage() {
 
       {/* 5. Floating Batch Operations Bar (for Table View) */}
       {selectedTaskIds.length > 0 && viewMode === "table" && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-xl border border-border bg-card/95 backdrop-blur-md px-4 py-2.5 shadow-2xl animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-lg border border-border bg-card/95 backdrop-blur-md px-4 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
           <span className="text-xs font-mono font-semibold text-foreground whitespace-nowrap">
             {selectedTaskIds.length} selected
           </span>

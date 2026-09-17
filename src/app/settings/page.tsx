@@ -137,7 +137,7 @@ function SettingsContent() {
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors",
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors cursor-pointer",
                   isSelected
                     ? "bg-primary text-primary-foreground font-semibold"
                     : "text-muted-foreground hover:text-foreground hover:bg-surface"
@@ -154,7 +154,7 @@ function SettingsContent() {
       {/* Main Grid: Sidebar + Content */}
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-start">
         {/* Desktop Sidebar Navigation */}
-        <nav className="hidden sm:flex sm:col-span-4 lg:col-span-3 flex-col gap-1 rounded-xl border border-border bg-card p-2 sticky top-20">
+        <nav className="hidden sm:flex sm:col-span-4 lg:col-span-3 flex-col gap-1 rounded-lg border border-border bg-card p-2 sticky top-20 shadow-2xs">
           <span className="px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground">
             Configuration Surfaces
           </span>
@@ -166,7 +166,7 @@ function SettingsContent() {
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={cn(
-                  "group flex items-start gap-3 px-3 py-2.5 rounded-lg text-left transition-all",
+                  "group flex items-start gap-3 px-3 py-2.5 rounded-md text-left transition-all cursor-pointer",
                   isSelected
                     ? "bg-primary/10 text-primary border border-primary/20 shadow-xs"
                     : "text-muted-foreground hover:text-foreground hover:bg-surface/70"

@@ -363,7 +363,7 @@ export default function ProjectWorkspacePage() {
   // Not Found State
   if (!project) {
     return (
-      <div className="rounded-xl border border-border bg-card p-12 text-center space-y-4 shadow-xs">
+      <div className="rounded-lg border border-border bg-card p-12 text-center space-y-4 shadow-2xs">
         <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto" />
         <h2 className="text-base font-bold text-foreground">Project Not Found</h2>
         <p className="text-xs text-muted-foreground max-w-sm mx-auto">
@@ -776,7 +776,7 @@ export default function ProjectWorkspacePage() {
       {/* Delete Confirmation Modal (Invoked from Header Actions Menu) */}
       {isDeleteConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
-          <div className="relative w-full max-w-sm rounded-xl border border-destructive/40 bg-card p-5 shadow-lg space-y-4">
+          <div className="relative w-full max-w-sm rounded-lg border border-destructive/40 bg-card p-5 shadow-xl space-y-4">
             <div className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-4 w-4" />
               <h3 className="text-sm font-bold">Delete Project</h3>

@@ -79,7 +79,7 @@ export function SkeletonCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card p-5 shadow-xs",
+        "rounded-lg border border-border bg-card p-5 shadow-2xs",
         className
       )}
       {...props}

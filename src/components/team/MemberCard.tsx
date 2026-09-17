@@ -77,7 +77,7 @@ export function MemberCard({ member, onRoleChange, onRemove, onSelectMember }: M
     <>
       <div
         onClick={() => onSelectMember?.(member)}
-        className="group relative flex flex-col justify-between h-full rounded-xl border border-border bg-card p-4 sm:p-5 hover:border-primary/50 hover:shadow-xs transition-all cursor-pointer"
+        className="group relative flex flex-col justify-between h-full rounded-lg border border-border bg-card p-4 sm:p-5 hover:border-border-strong hover:shadow-2xs transition-all cursor-pointer"
       >
         {/* Top: Header with Avatar, Details & Actions */}
         <div className="space-y-3.5">
@@ -257,7 +257,7 @@ export function MemberCard({ member, onRoleChange, onRemove, onSelectMember }: M
           onClick={(e) => e.stopPropagation()}
         >
           <div className="fixed inset-0" onClick={() => setIsDeleteConfirmOpen(false)} />
-          <div className="relative w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+          <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl space-y-4 animate-in zoom-in-95">
             <div className="flex items-center gap-2.5 text-destructive">
               <Trash2 className="h-5 w-5" />
               <h4 className="text-sm font-bold text-foreground">Remove Squad Member</h4>
@@ -270,7 +270,7 @@ export function MemberCard({ member, onRoleChange, onRemove, onSelectMember }: M
               <button
                 type="button"
                 onClick={() => setIsDeleteConfirmOpen(false)}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border hover:bg-surface text-foreground transition-colors"
+                className="px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-surface text-foreground transition-colors"
               >
                 Cancel
               </button>

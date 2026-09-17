@@ -3,10 +3,12 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { Clock, ArrowRight } from "lucide-react";
 import { useTaskStore, useWorkspaceStore } from "@/store";
 import { apiClient } from "@/lib/apiClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Task } from "@/types";
+import { DueDateChip, StatusBadge, PriorityBadge } from "@/components/ui";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 
 const TaskDetailDrawer = dynamic(
@@ -21,7 +23,6 @@ export function UpcomingDeadlinesWidget() {
   const { onEvent } = useRealtime();
   const [isLoading, setIsLoading] = React.useState(tasks.length === 0);
   const [selectedTask, setSelectedTask] = React.useState<Task | null>(null);
-
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -47,7 +48,7 @@ export function UpcomingDeadlinesWidget() {
             status: t.status.toLowerCase(),
             priority: t.priority.toLowerCase(),
             assigneeId: t.assigneeId || "",
-            dueDate: t.dueDate ? t.dueDate.split("T")[0] : "2026-09-15",
+            dueDate: t.dueDate ? t.dueDate.split("T")[0] : undefined,
             order: t.order || 0,
             subtasks: t.subtasks || [],
             tags: t.tags || [],
@@ -75,7 +76,7 @@ export function UpcomingDeadlinesWidget() {
     };
   }, [activeWorkspace?.id, isWorkspaceValidated, setTasks]);
 
-  // --- Realtime Tasks Live Synchronization ---
+  // Realtime Tasks Live Synchronization
   React.useEffect(() => {
     const unsubCreate = onEvent("TASK_CREATED", (event) => {
       const raw = event.payload;
@@ -143,90 +144,56 @@ export function UpcomingDeadlinesWidget() {
   }, [onEvent, addTask, updateTask, moveTaskStatus, deleteTask]);
 
   const displayTasks = tasks
-    .filter((t) => Boolean(t.dueDate) && t.status?.toLowerCase() !== "done" && t.status?.toLowerCase() !== "completed")
+    .filter((t) => Boolean(t.dueDate) && t.status?.toLowerCase() !== "done" && t.status?.toLowerCase() !== "cancelled")
     .sort((a, b) => new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime())
-    .slice(0, 4);
+    .slice(0, 5);
 
   const getProjectName = (projectId: string) => {
     const proj = projects.find((p) => p.id === projectId);
-    return proj ? proj.name : "Website Initiative";
-  };
-
-  const getStatusBadge = (status?: string) => {
-    const s = (status || "todo").toLowerCase();
-    if (s === "done" || s === "completed") {
-      return (
-        <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400">
-          Done
-        </span>
-      );
-    }
-    if (s === "planning") {
-      return (
-        <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
-          Planning
-        </span>
-      );
-    }
-    if (s === "in_review" || s === "review" || s === "on_hold") {
-      return (
-        <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium bg-sky-500/15 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400">
-          Review
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400">
-        In Progress
-      </span>
-    );
-  };
-
-  const formatFigmaDate = (dateStr?: string) => {
-    if (!dateStr) return "17 August 2026";
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  };
-
-  const handleTaskClick = (task: (typeof tasks)[0]) => {
-    setSelectedTask(task as Task);
+    return proj ? proj.name : "Initiative";
   };
 
   return (
     <>
-      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-xs flex flex-col justify-between min-h-[340px]">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm sm:text-base font-bold text-foreground">Due Date</h2>
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-5 shadow-2xs flex flex-col justify-between min-h-[320px]">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-border/60">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-primary" />
+            <h2 className="text-xs sm:text-sm font-bold tracking-tight text-foreground uppercase font-mono">
+              Upcoming Deadlines
+            </h2>
+          </div>
+          <button
+            onClick={() => router.push("/tasks")}
+            className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+          >
+            <span>View All</span>
+            <ArrowRight className="h-3 w-3" />
+          </button>
         </div>
 
-        <div className="mt-4 space-y-4">
+        {/* Tasks List */}
+        <div className="mt-3 divide-y divide-border/40 flex-1">
           {isLoading ? (
             <div className="space-y-3 py-1">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex items-center justify-between gap-4 py-2 border-b border-border/40 last:border-0">
+                <div key={i} className="flex items-center justify-between gap-4 py-2.5">
                   <div className="space-y-1.5 flex-1">
                     <Skeleton className="h-4 w-36 rounded" />
-                    <Skeleton className="h-3 w-24 rounded" />
+                    <Skeleton className="h-3 w-20 rounded" />
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="h-5 w-16 rounded" />
-                    <Skeleton className="h-4 w-24 rounded" />
-                  </div>
+                  <Skeleton className="h-5 w-20 rounded" />
                 </div>
               ))}
             </div>
           ) : error ? (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center text-xs text-destructive">
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-6 text-center text-xs text-destructive my-4">
               {error}
             </div>
           ) : displayTasks.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/80 p-8 text-center text-xs text-muted-foreground">
-              No upcoming tasks found.
+            <div className="rounded-md border border-dashed border-border/80 p-8 text-center text-xs text-muted-foreground my-4">
+              No upcoming task deadlines scheduled.
             </div>
           ) : (
             displayTasks.map((item) => (
@@ -235,31 +202,29 @@ export function UpcomingDeadlinesWidget() {
                 tabIndex={0}
                 role="button"
                 aria-label={`Inspect task ${item.title}`}
-                onClick={() => handleTaskClick(item)}
+                onClick={() => setSelectedTask(item as Task)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    handleTaskClick(item);
+                    setSelectedTask(item as Task);
                   }
                 }}
-                className="group flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 py-2.5 border-b border-border/40 last:border-0 hover:bg-muted/20 focus:bg-muted/20 focus:outline-hidden rounded-lg px-2 transition-colors cursor-pointer"
+                className="group flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 py-2.5 px-2 hover:bg-surface-muted/50 rounded-md transition-colors cursor-pointer"
               >
-                {/* Left: Task Title & Project Subtitle */}
+                {/* Left: Title & Project */}
                 <div className="min-w-0 flex-1 space-y-0.5">
-                  <h3 className="text-xs sm:text-sm font-semibold text-foreground group-hover:text-primary group-focus:text-primary transition-colors truncate">
+                  <h3 className="text-xs sm:text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">
                     {item.title}
                   </h3>
-                  <p className="text-[11px] text-muted-foreground truncate">
+                  <p className="text-[11px] text-muted-foreground font-mono truncate">
                     {getProjectName(item.projectId)}
                   </p>
                 </div>
 
-                {/* Right: Status Pill & Formatted Date */}
-                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                  {getStatusBadge(item.status)}
-                  <span className="text-[11px] sm:text-xs font-mono font-medium text-muted-foreground whitespace-nowrap min-w-[100px] text-right">
-                    {formatFigmaDate(item.dueDate)}
-                  </span>
+                {/* Right: Due Date Chip & Priority */}
+                <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 pl-4 sm:pl-0">
+                  <PriorityBadge priority={item.priority} size="sm" />
+                  <DueDateChip dueDate={item.dueDate} />
                 </div>
               </div>
             ))

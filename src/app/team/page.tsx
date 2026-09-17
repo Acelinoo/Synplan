@@ -291,7 +291,7 @@ export default function TeamPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
               <Users2 className="h-5 w-5" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
@@ -324,7 +324,7 @@ export default function TeamPage() {
       <WorkloadVisualizer members={members} />
 
       {/* Filter & View Mode Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 shadow-xs">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 shadow-2xs">
         {/* Search Input */}
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -333,7 +333,7 @@ export default function TeamPage() {
             placeholder="Search member by name or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8.5 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary transition-colors"
+            className="h-8.5 w-full rounded-md border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden focus:ring-1 focus:ring-primary transition-colors"
           />
         </div>
 
@@ -438,17 +438,17 @@ export default function TeamPage() {
             ))}
           </div>
         ) : (
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3" aria-busy="true">
-            <Skeleton className="h-9 w-full rounded-lg" />
-            <Skeleton className="h-12 w-full rounded-lg" />
-            <Skeleton className="h-12 w-full rounded-lg" />
-            <Skeleton className="h-12 w-full rounded-lg" />
-            <Skeleton className="h-12 w-full rounded-lg" />
+          <div className="rounded-lg border border-border bg-card p-4 space-y-3" aria-busy="true">
+            <Skeleton className="h-9 w-full rounded-md" />
+            <Skeleton className="h-12 w-full rounded-md" />
+            <Skeleton className="h-12 w-full rounded-md" />
+            <Skeleton className="h-12 w-full rounded-md" />
+            <Skeleton className="h-12 w-full rounded-md" />
           </div>
         )
       ) : filteredMembers.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card/40 p-12 text-center">
-          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-muted-foreground mb-3">
+        <div className="rounded-lg border border-dashed border-border bg-card/40 p-12 text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground mb-3">
             <SlidersHorizontal className="h-5 w-5" />
           </div>
           <p className="text-sm font-semibold text-foreground">No team members match this filter</p>

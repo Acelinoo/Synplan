@@ -48,7 +48,7 @@ export function MemberTableView({
 
   return (
     <>
-      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
+      <div className="rounded-lg border border-border bg-card overflow-hidden shadow-2xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
@@ -292,7 +292,7 @@ export function MemberTableView({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="fixed inset-0" onClick={() => setDeleteTargetMember(null)} />
-          <div className="relative w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
+          <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl space-y-4 animate-in zoom-in-95">
             <div className="flex items-center gap-2.5 text-destructive">
               <Trash2 className="h-5 w-5" />
               <h4 className="text-sm font-bold text-foreground">Remove Squad Member</h4>
@@ -305,7 +305,7 @@ export function MemberTableView({
               <button
                 type="button"
                 onClick={() => setDeleteTargetMember(null)}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border hover:bg-surface text-foreground transition-colors"
+                className="px-3 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-surface text-foreground transition-colors"
               >
                 Cancel
               </button>

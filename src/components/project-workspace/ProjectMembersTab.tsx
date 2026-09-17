@@ -216,7 +216,7 @@ export function ProjectMembersTab({
   return (
     <div className="space-y-6">
       {/* Top Banner / Squad Overview */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-border bg-card p-5 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-lg border border-border bg-card p-5 shadow-xs">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Users2 className="h-4 w-4 text-primary" />
@@ -276,7 +276,7 @@ export function ProjectMembersTab({
 
       {/* Collaborators Grid */}
       {filteredMembers.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card/50 p-12 text-center space-y-3">
+        <div className="rounded-lg border border-dashed border-border bg-card/50 p-12 text-center space-y-3">
           <Users2 className="h-8 w-8 text-muted-foreground mx-auto" />
           <h3 className="text-sm font-bold text-foreground">
             {searchQuery || roleFilter !== "all" ? "No Matching Squad Members" : "No Squad Members Assigned"}
@@ -311,7 +311,7 @@ export function ProjectMembersTab({
             return (
               <div
                 key={m.id}
-                className="flex flex-col justify-between rounded-xl border border-border bg-card p-4 space-y-3 shadow-2xs hover:border-border/80 transition-colors"
+                className="flex flex-col justify-between rounded-lg border border-border bg-card p-4 space-y-3 shadow-2xs hover:border-border/80 transition-colors"
               >
                 {/* Header: Avatar, Name, Email */}
                 <div className="flex items-start justify-between gap-3">
@@ -402,7 +402,7 @@ export function ProjectMembersTab({
       {/* Add Member Modal Dialog */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
-          <div className="relative w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg space-y-4">
+          <div className="relative w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-lg space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
                 <UserPlus className="h-4 w-4 text-primary" />
@@ -499,7 +499,7 @@ export function ProjectMembersTab({
       {/* Remove Member Confirmation Dialog */}
       {memberToRemove && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-150">
-          <div className="relative w-full max-w-sm rounded-xl border border-destructive/40 bg-card p-5 shadow-lg space-y-4">
+          <div className="relative w-full max-w-sm rounded-lg border border-destructive/40 bg-card p-5 shadow-lg space-y-4">
             <div className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-4 w-4" />
               <h3 className="text-sm font-bold">Remove Squad Member</h3>

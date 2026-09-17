@@ -4,132 +4,132 @@
 
 @layer base {
   :root {
-    /* Synplan 2.0 Light Mode Tokens — High-Precision Slate-Cobalt Palette */
-    --background: #F8FAFC;         /* Slate 50 — clean, calm canvas */
-    --foreground: #0F172A;         /* Slate 900 — crisp high-contrast body text */
+    /* Synplan 3.0 Light Mode Tokens — Editorial SaaS × Precision Workspace */
+    --background: #F8F9FA;         /* Calm, crisp technical paper */
+    --foreground: #111827;         /* High-contrast ink / Slate 900 */
 
-    --sidebar-bg: #FFFFFF;         /* White sidebar for crisp structure */
-    --sidebar-foreground: #334155;  /* Slate 700 */
-    --sidebar-border: #E2E8F0;      /* Slate 200 */
-    --sidebar-accent: #0F3D64;      /* Deep Synplan Cobalt */
+    --sidebar-bg: #FFFFFF;         /* Crisp structural sidebar */
+    --sidebar-foreground: #374151;  /* Slate 700 */
+    --sidebar-border: #E5E7EB;      /* 1px subtle divider */
+    --sidebar-accent: #1E40AF;      /* Deep Synplan Cobalt */
     --sidebar-accent-foreground: #FFFFFF;
 
     --card: #FFFFFF;               /* Surface level 1 */
-    --card-foreground: #0F172A;
-    --card-border: #E2E8F0;
+    --card-foreground: #111827;
+    --card-border: #E5E7EB;
 
     --surface: #FFFFFF;
-    --surface-muted: #F1F5F9;      /* Slate 100 — table headers, muted bands */
+    --surface-muted: #F3F4F6;      /* Slate 100 — table headers, muted bands */
     --surface-elevated: #FFFFFF;   /* Modals, popovers */
 
     --popover: #FFFFFF;
-    --popover-foreground: #0F172A;
+    --popover-foreground: #111827;
 
-    --primary: #0F3D64;            /* Synplan Deep Cobalt — authoritative, calm */
+    --primary: #1E40AF;            /* Synplan Deep Cobalt — authoritative, calm */
     --primary-foreground: #FFFFFF;
-    --primary-hover: #0A2B47;
-    --primary-muted: rgba(15, 61, 100, 0.08);
+    --primary-hover: #1D4ED8;
+    --primary-muted: rgba(30, 64, 175, 0.08);
 
-    --secondary: #F1F5F9;          /* Slate 100 */
-    --secondary-foreground: #1E293B;
+    --secondary: #F3F4F6;          /* Slate 100 */
+    --secondary-foreground: #1F2937;
 
-    --muted: #F1F5F9;
-    --muted-foreground: #64748B;   /* Slate 500 — secondary text */
+    --muted: #F3F4F6;
+    --muted-foreground: #6B7280;   /* Slate 500 — secondary metadata */
 
-    --accent: #0F3D64;
+    --accent: #1E40AF;
     --accent-foreground: #FFFFFF;
 
     --destructive: #DC2626;        /* Red 600 */
     --destructive-foreground: #FFFFFF;
 
-    --border: #E2E8F0;             /* Slate 200 */
-    --border-subtle: #F1F5F9;      /* Slate 100 */
-    --border-strong: #CBD5E1;      /* Slate 300 */
-    --input: #E2E8F0;
-    --ring: #0F3D64;
+    --border: #E5E7EB;             /* Slate 200 */
+    --border-subtle: #F3F4F6;      /* Slate 100 */
+    --border-strong: #D1D5DB;      /* Slate 300 */
+    --input: #E5E7EB;
+    --ring: #1E40AF;
 
     /* Semantic Task Status Tokens (Light) */
-    --status-backlog: #64748B;
-    --status-todo: #475569;
+    --status-backlog: #6B7280;
+    --status-todo: #4B5563;
     --status-progress: #2563EB;
     --status-review: #D97706;
     --status-done: #059669;
     --status-blocked: #DC2626;
-    --status-cancelled: #94A3B8;
+    --status-cancelled: #9CA3AF;
 
     /* Semantic Priority Tokens (Light) */
-    --priority-low: #64748B;
-    --priority-medium: #0284C7;
+    --priority-low: #6B7280;
+    --priority-medium: #2563EB;
     --priority-high: #D97706;
     --priority-urgent: #DC2626;
 
-    /* Radius Scale: Restrained, Geometric */
+    /* Restrained Geometric Radius Scale */
     --radius-xs: 2px;
     --radius-sm: 4px;
     --radius-md: 6px;
     --radius-lg: 8px;
     --radius-xl: 12px;
-    --radius: 8px;
+    --radius: 6px;
   }
 
   .dark {
-    /* Synplan 2.0 Dark Mode Tokens — Deep Obsidian Slate Palette */
-    --background: #090D14;         /* Deep Obsidian Slate canvas */
-    --foreground: #F1F5F9;         /* Slate 100 */
+    /* Synplan 3.0 Dark Mode Tokens — Deep Obsidian Slate Palette */
+    --background: #0B0F17;         /* Deep Obsidian Carbon canvas */
+    --foreground: #F3F4F6;         /* Slate 100 */
 
-    --sidebar-bg: #0C121D;         /* Slightly offset dark sidebar */
-    --sidebar-foreground: #94A3B8;  /* Slate 400 */
-    --sidebar-border: #1E293B;      /* Slate 800 */
-    --sidebar-accent: #0284C7;      /* Vivid Sky / Cobalt */
+    --sidebar-bg: #0E1420;         /* Offset dark structural sidebar */
+    --sidebar-foreground: #9CA3AF;  /* Slate 400 */
+    --sidebar-border: #1F2937;      /* Slate 800 */
+    --sidebar-accent: #3B82F6;      /* Vivid Electric Cobalt */
     --sidebar-accent-foreground: #FFFFFF;
 
-    --card: #0F1726;               /* Surface level 1 */
-    --card-foreground: #F1F5F9;
-    --card-border: #1E293B;
+    --card: #111827;               /* Surface level 1 */
+    --card-foreground: #F3F4F6;
+    --card-border: #1F2937;
 
-    --surface: #0F1726;
-    --surface-muted: #162032;      /* Surface level 2 — muted bands, table headers */
-    --surface-elevated: #1A263C;   /* Surface level 3 — popovers, dialogs */
+    --surface: #111827;
+    --surface-muted: #162032;      /* Surface level 2 — muted bands, headers */
+    --surface-elevated: #1C2638;   /* Surface level 3 — popovers, dialogs */
 
     --popover: #162032;
-    --popover-foreground: #F1F5F9;
+    --popover-foreground: #F3F4F6;
 
-    --primary: #0284C7;            /* Sky 600 / Cobalt — bright high-contrast on dark */
+    --primary: #3B82F6;            /* Electric Cobalt — high-contrast on dark */
     --primary-foreground: #FFFFFF;
-    --primary-hover: #0369A1;
-    --primary-muted: rgba(2, 132, 199, 0.15);
+    --primary-hover: #2563EB;
+    --primary-muted: rgba(59, 130, 246, 0.15);
 
     --secondary: #162032;
-    --secondary-foreground: #F1F5F9;
+    --secondary-foreground: #F3F4F6;
 
     --muted: #162032;
-    --muted-foreground: #94A3B8;   /* Slate 400 */
+    --muted-foreground: #9CA3AF;   /* Slate 400 */
 
-    --accent: #0284C7;
+    --accent: #3B82F6;
     --accent-foreground: #FFFFFF;
 
     --destructive: #EF4444;        /* Red 500 */
     --destructive-foreground: #FFFFFF;
 
-    --border: #1E293B;             /* Slate 800 */
+    --border: #1F2937;             /* Slate 800 */
     --border-subtle: #162032;
-    --border-strong: #334155;      /* Slate 700 */
-    --input: #1E293B;
-    --ring: #0284C7;
+    --border-strong: #374151;      /* Slate 700 */
+    --input: #1F2937;
+    --ring: #3B82F6;
 
     /* Semantic Task Status Tokens (Dark) */
-    --status-backlog: #64748B;
-    --status-todo: #94A3B8;
-    --status-progress: #38BDF8;
-    --status-review: #F59E0B;
+    --status-backlog: #6B7280;
+    --status-todo: #9CA3AF;
+    --status-progress: #60A5FA;
+    --status-review: #FBBF24;
     --status-done: #10B981;
     --status-blocked: #EF4444;
-    --status-cancelled: #64748B;
+    --status-cancelled: #6B7280;
 
     /* Semantic Priority Tokens (Dark) */
-    --priority-low: #64748B;
-    --priority-medium: #38BDF8;
-    --priority-high: #F59E0B;
+    --priority-low: #6B7280;
+    --priority-medium: #60A5FA;
+    --priority-high: #FBBF24;
     --priority-urgent: #EF4444;
   }
 }
@@ -160,7 +160,7 @@
   }
 }
 
-/* Restrained Custom Scrollbar for High-Density Product Views */
+/* High-Density Restrained Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -169,11 +169,11 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.25);
+  background: rgba(156, 163, 175, 0.25);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.45);
+  background: rgba(156, 163, 175, 0.45);
 }
 
 /* Reduced motion preference support */
@@ -185,4 +185,3 @@
     scroll-behavior: auto !important;
   }
 }
-

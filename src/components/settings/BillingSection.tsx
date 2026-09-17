@@ -21,7 +21,7 @@ export function BillingSection() {
   return (
     <div className="space-y-6">
       {/* Plan Header Card */}
-      <div className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
           <div className="flex items-center gap-2.5">
             <div className="rounded-lg bg-primary/10 p-2 text-primary">
@@ -59,7 +59,7 @@ export function BillingSection() {
       </div>
 
       {/* Feature Entitlements Breakdown */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-primary" />
@@ -88,7 +88,7 @@ export function BillingSection() {
       </div>
 
       {/* Honest Billing Boundary Notice */}
-      <div className="rounded-xl border border-border/60 bg-surface/30 p-4 text-xs text-muted-foreground space-y-1.5">
+      <div className="rounded-lg border border-border/60 bg-surface/30 p-4 text-xs text-muted-foreground space-y-1.5">
         <div className="flex items-center gap-2 font-semibold text-foreground">
           <ShieldCheck className="h-4 w-4 text-emerald-500" />
           <span>Zero-Cost Guarantee</span>

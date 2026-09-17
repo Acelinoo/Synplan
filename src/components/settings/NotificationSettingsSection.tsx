@@ -10,7 +10,7 @@ export function NotificationSettingsSection() {
   return (
     <div className="space-y-6">
       {/* Information Header Card */}
-      <div className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 sm:p-6 space-y-4">
         <div className="flex items-center gap-2.5 border-b border-border pb-4">
           <div className="rounded-lg bg-primary/10 p-2 text-primary">
             <Bell className="h-4 w-4" />
@@ -38,7 +38,7 @@ export function NotificationSettingsSection() {
       </div>
 
       {/* Active In-App Realtime Delivery Channels */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <Radio className="h-4 w-4 text-emerald-500 animate-pulse" />
@@ -100,7 +100,7 @@ export function NotificationSettingsSection() {
       </div>
 
       {/* External Notification Channels (Honest Architecture Status) */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-muted-foreground" />

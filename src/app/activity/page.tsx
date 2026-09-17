@@ -360,7 +360,7 @@ export default function ActivityPage() {
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex gap-4 pl-2">
               <div className="h-8 w-8 rounded-full bg-muted/60 animate-pulse shrink-0" />
-              <div className="flex-1 space-y-2 rounded-xl border border-border/40 bg-card/40 p-3.5">
+              <div className="flex-1 space-y-2 rounded-lg border border-border/40 bg-card/40 p-3.5">
                 <div className="h-4 w-3/4 bg-muted/60 rounded animate-pulse" />
                 <div className="h-3 w-1/4 bg-muted/40 rounded animate-pulse" />
               </div>
@@ -368,7 +368,7 @@ export default function ActivityPage() {
           ))}
         </div>
       ) : error ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-destructive/30 bg-destructive/5 p-12 text-center">
+        <div className="flex flex-col items-center justify-center rounded-lg border border-destructive/30 bg-destructive/5 p-12 text-center">
           <AlertCircle className="h-8 w-8 text-destructive mb-2" />
           <h3 className="text-sm font-semibold text-foreground">Unable to load activity</h3>
           <p className="text-xs text-muted-foreground mt-1 max-w-sm">{error}</p>
@@ -376,7 +376,7 @@ export default function ActivityPage() {
             variant="outline"
             size="sm"
             onClick={() => loadActivities(true)}
-            className="mt-4 gap-1.5 text-xs"
+            className="mt-4 gap-1.5 text-xs cursor-pointer"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             <span>Retry Query</span>
@@ -385,7 +385,7 @@ export default function ActivityPage() {
       ) : activities.length === 0 ? (
         hasActiveFilters ? (
           /* Filter Empty State */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 p-12 text-center">
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 p-12 text-center">
             <FilterX className="h-8 w-8 text-muted-foreground/50 mb-2" />
             <h3 className="text-sm font-semibold text-foreground">No matching activity found</h3>
             <p className="text-xs text-muted-foreground mt-1 max-w-sm">
@@ -395,7 +395,7 @@ export default function ActivityPage() {
               variant="outline"
               size="sm"
               onClick={handleResetFilters}
-              className="mt-4 gap-1.5 text-xs"
+              className="mt-4 gap-1.5 text-xs cursor-pointer"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               <span>Reset All Filters</span>
@@ -403,7 +403,7 @@ export default function ActivityPage() {
           </div>
         ) : (
           /* Zero State (No activities in workspace yet) */
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 p-12 text-center">
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 p-12 text-center">
             <Inbox className="h-8 w-8 text-muted-foreground/50 mb-2" />
             <h3 className="text-sm font-semibold text-foreground">No workspace activity yet</h3>
             <p className="text-xs text-muted-foreground mt-1 max-w-sm">
@@ -453,7 +453,7 @@ export default function ActivityPage() {
                 size="sm"
                 onClick={() => loadActivities(false)}
                 disabled={isLoadingMore}
-                className="h-9 px-4 text-xs gap-2 rounded-xl border-border/70 hover:bg-muted/40 transition-all shadow-xs"
+                className="h-8.5 px-4 text-xs gap-2 rounded-md border-border/70 hover:bg-muted/40 transition-all shadow-2xs cursor-pointer"
               >
                 {isLoadingMore ? (
                   <>

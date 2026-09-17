@@ -99,7 +99,7 @@ export function ProjectTableView({
 
   if (tasks.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border p-12 text-center text-xs text-muted-foreground">
+      <div className="rounded-lg border border-dashed border-border p-12 text-center text-xs text-muted-foreground">
         No tasks matching criteria.
       </div>
     );
@@ -115,7 +115,7 @@ export function ProjectTableView({
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+    <div className="rounded-lg border border-border bg-card shadow-xs overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs border-collapse">
           <thead>

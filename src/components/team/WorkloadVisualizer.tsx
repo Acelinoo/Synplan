@@ -24,7 +24,7 @@ export function WorkloadVisualizer({ members }: WorkloadVisualizerProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {/* 1. Squad Bandwidth */}
-      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-5 flex flex-col justify-between shadow-xs">
         <div className="flex items-center justify-between text-muted-foreground text-xs uppercase tracking-wider font-semibold">
           <span>Squad Bandwidth</span>
           <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
@@ -48,7 +48,7 @@ export function WorkloadVisualizer({ members }: WorkloadVisualizerProps) {
       </div>
 
       {/* 2. Total In-Flight Tasks */}
-      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-5 flex flex-col justify-between shadow-xs">
         <div className="flex items-center justify-between text-muted-foreground text-xs uppercase tracking-wider font-semibold">
           <span>Allocated Tasks</span>
           <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
@@ -71,7 +71,7 @@ export function WorkloadVisualizer({ members }: WorkloadVisualizerProps) {
       </div>
 
       {/* 3. High Load Warning Alert */}
-      <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between shadow-xs">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-5 flex flex-col justify-between shadow-xs">
         <div className="flex items-center justify-between text-muted-foreground text-xs uppercase tracking-wider font-semibold">
           <span>Bottleneck Risk</span>
           <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">

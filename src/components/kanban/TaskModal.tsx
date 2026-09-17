@@ -313,11 +313,11 @@ export function TaskModal({ editingTask, defaultStatus = "todo", defaultProjectI
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in">
       <div className="fixed inset-0" onClick={handleClose} />
-      <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl overflow-hidden z-10">
+      <div className="relative w-full max-w-lg rounded-lg border border-border bg-card shadow-xl overflow-hidden z-10">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 text-primary">
               <CheckSquare className="h-4 w-4" />
             </div>
             <div>

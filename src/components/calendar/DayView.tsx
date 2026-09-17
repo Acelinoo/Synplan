@@ -31,7 +31,7 @@ export function DayView({ currentDate, tasks, onSelectTask }: DayViewProps) {
   const dayTasks = tasks.filter((t) => t.dueDate === dateStr || true); // show today's tasks or active backlog
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+    <div className="rounded-lg border border-border bg-card overflow-hidden shadow-sm">
       {/* Date Header */}
       <div className="border-b border-border bg-surface/60 p-4 text-center">
         <h3 className="text-sm font-bold text-foreground">
@@ -63,7 +63,7 @@ export function DayView({ currentDate, tasks, onSelectTask }: DayViewProps) {
                   <div
                     onClick={() => onSelectTask?.(taskForHour)}
                     className={cn(
-                      "cursor-pointer rounded-lg border p-2.5 transition-all hover:scale-[1.01]",
+                      "cursor-pointer rounded-md border p-2.5 transition-all hover:scale-[1.01]",
                       statusColorMap[taskForHour.status].bg,
                       statusColorMap[taskForHour.status].border
                     )}

@@ -19,7 +19,6 @@ import {
   ChevronsRight,
   Check,
   X,
-  Plus,
 } from "lucide-react";
 import { useUiStore, useWorkspaceStore, useNotificationStore } from "@/store";
 import { Avatar } from "@/components/ui/avatar";
@@ -27,12 +26,11 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface NavGroup {
-  category?: string;
+  category: string;
   items: {
     title: string;
     href: string;
     icon: React.ComponentType<{ className?: string }>;
-    badge?: string;
   }[];
 }
 
@@ -42,23 +40,23 @@ const navGroups: NavGroup[] = [
     items: [
       { title: "Dashboard", href: "/", icon: LayoutDashboard },
       { title: "My Work", href: "/my-work", icon: CheckCircle2 },
-      { title: "Projects", href: "/projects", icon: FolderKanban },
       { title: "Tasks", href: "/tasks", icon: CheckSquare },
-      { title: "Activity", href: "/activity", icon: Activity },
+      { title: "Projects", href: "/projects", icon: FolderKanban },
     ],
   },
   {
-    category: "Planning",
+    category: "Collaboration",
     items: [
-      { title: "Calendar", href: "/calendar", icon: Calendar },
-      { title: "Reports", href: "/reports", icon: BarChart3 },
       { title: "Team", href: "/team", icon: Users2 },
+      { title: "Calendar", href: "/calendar", icon: Calendar },
+      { title: "Activity", href: "/activity", icon: Activity },
+      { title: "Notifications", href: "/notifications", icon: Bell },
     ],
   },
   {
-    category: "Workspace",
+    category: "System",
     items: [
-      { title: "Notifications", href: "/notifications", icon: Bell },
+      { title: "Reports", href: "/reports", icon: BarChart3 },
       { title: "Settings", href: "/settings", icon: Settings },
     ],
   },
@@ -66,7 +64,7 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { isSidebarCollapsed, toggleSidebar, setCreateProjectModalOpen } = useUiStore();
+  const { isSidebarCollapsed, toggleSidebar } = useUiStore();
   const { activeWorkspace, workspaces, setActiveWorkspace, currentUser } = useWorkspaceStore();
   const { unreadCount } = useNotificationStore();
 
@@ -91,7 +89,7 @@ export function Sidebar() {
       {/* Mobile Backdrop Overlay */}
       {!isSidebarCollapsed && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden animate-in fade-in transition-opacity"
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-xs md:hidden animate-in fade-in transition-opacity"
           onClick={toggleSidebar}
           aria-hidden="true"
         />
@@ -103,29 +101,29 @@ export function Sidebar() {
           "flex flex-col border-r border-border bg-sidebar transition-all duration-200 ease-in-out select-none z-40 h-full",
           isSidebarCollapsed
             ? "hidden md:flex md:w-16"
-            : "fixed inset-y-0 left-0 w-60 md:relative md:w-60 shadow-2xl md:shadow-none"
+            : "fixed inset-y-0 left-0 w-60 md:relative md:w-60 shadow-xl md:shadow-none"
         )}
       >
-        {/* Workspace Identity & Switcher Header */}
-        <div className="relative flex h-14 items-center justify-between border-b border-border px-3.5 bg-sidebar">
+        {/* Workspace Switcher Header */}
+        <div className="relative flex h-14 items-center justify-between border-b border-border px-3 bg-sidebar">
           {!isSidebarCollapsed ? (
-            <div className="relative min-w-0 flex-1 mr-2">
+            <div className="relative min-w-0 flex-1 mr-1.5">
               <button
                 type="button"
                 onClick={() => setIsWorkspaceMenuOpen(!isWorkspaceMenuOpen)}
-                className="flex w-full items-center justify-between rounded-md p-1.5 text-left hover:bg-muted/70 transition-colors cursor-pointer"
+                className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left hover:bg-surface-muted transition-colors cursor-pointer border border-transparent hover:border-border/60"
                 aria-expanded={isWorkspaceMenuOpen}
                 aria-label="Select Workspace"
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-xs">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-primary text-primary-foreground font-bold text-xs font-mono shadow-2xs">
                     {activeWorkspace?.name ? activeWorkspace.name.charAt(0).toUpperCase() : "S"}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-foreground leading-tight">
-                      {activeWorkspace?.name || "Synplan Workspace"}
+                    <p className="truncate text-xs font-bold text-foreground leading-tight tracking-tight">
+                      {activeWorkspace?.name || "Synplan"}
                     </p>
-                    <p className="text-[10px] font-mono text-muted-foreground uppercase">
+                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
                       Workspace
                     </p>
                   </div>
@@ -142,7 +140,7 @@ export function Sidebar() {
                     aria-hidden="true"
                   />
                   <div className="absolute left-0 top-12 z-50 w-56 rounded-md border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95">
-                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-mono">
                       Switch Workspace
                     </div>
                     <div className="max-h-48 overflow-y-auto py-1">
@@ -157,12 +155,12 @@ export function Sidebar() {
                             "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-xs transition-colors cursor-pointer text-left",
                             activeWorkspace?.id === ws.id
                               ? "bg-primary/10 text-primary font-semibold"
-                              : "text-foreground hover:bg-muted/70"
+                              : "text-foreground hover:bg-surface-muted"
                           )}
                         >
                           <span className="truncate">{ws.name}</span>
                           {activeWorkspace?.id === ws.id && (
-                            <Check className="h-3.5 w-3.5 shrink-0" />
+                            <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
                           )}
                         </button>
                       ))}
@@ -174,7 +172,7 @@ export function Sidebar() {
           ) : (
             <div className="flex w-full items-center justify-center">
               <Tooltip content={activeWorkspace?.name || "Synplan"} side="right">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-xs shadow-2xs">
+                <div className="flex h-8 w-8 items-center justify-center rounded bg-primary text-primary-foreground font-bold text-xs font-mono shadow-2xs">
                   {activeWorkspace?.name ? activeWorkspace.name.charAt(0).toUpperCase() : "S"}
                 </div>
               </Tooltip>
@@ -186,7 +184,7 @@ export function Sidebar() {
             {/* Mobile close button */}
             <button
               onClick={toggleSidebar}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted md:hidden cursor-pointer"
+              className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-muted md:hidden cursor-pointer"
               aria-label="Close sidebar"
             >
               <X className="h-4 w-4" />
@@ -196,7 +194,7 @@ export function Sidebar() {
             {!isSidebarCollapsed && (
               <button
                 onClick={toggleSidebar}
-                className="hidden md:flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors cursor-pointer"
+                className="hidden md:flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-muted transition-colors cursor-pointer"
                 title="Collapse sidebar"
                 aria-label="Collapse sidebar"
               >
@@ -212,9 +210,9 @@ export function Sidebar() {
           aria-label="Sidebar Navigation"
         >
           {navGroups.map((group, groupIndex) => (
-            <div key={groupIndex} className="space-y-1">
+            <div key={groupIndex} className="space-y-0.5">
               {!isSidebarCollapsed && group.category && (
-                <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
+                <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 font-mono">
                   {group.category}
                 </div>
               )}
@@ -237,7 +235,7 @@ export function Sidebar() {
                       "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs transition-colors cursor-pointer",
                       isActive
                         ? "bg-primary text-primary-foreground font-semibold shadow-2xs"
-                        : "text-sidebar-foreground hover:bg-muted/70 hover:text-foreground font-medium",
+                        : "text-sidebar-foreground hover:bg-surface-muted hover:text-foreground font-medium",
                       isSidebarCollapsed && "justify-center px-0 py-2"
                     )}
                     aria-current={isActive ? "page" : undefined}
@@ -257,7 +255,14 @@ export function Sidebar() {
                       <>
                         <span className="truncate flex-1">{item.title}</span>
                         {item.href === "/notifications" && unreadCount > 0 && (
-                          <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 font-mono text-[9px] font-bold text-primary">
+                          <span
+                            className={cn(
+                              "ml-auto flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[9px] font-bold",
+                              isActive
+                                ? "bg-primary-foreground text-primary"
+                                : "bg-primary/10 text-primary"
+                            )}
+                          >
                             {unreadCount > 99 ? "99+" : unreadCount}
                           </span>
                         )}
@@ -288,7 +293,7 @@ export function Sidebar() {
           <div className="border-t border-border p-2 hidden md:flex justify-center">
             <button
               onClick={toggleSidebar}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors cursor-pointer"
+              className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-surface-muted transition-colors cursor-pointer"
               title="Expand sidebar"
               aria-label="Expand sidebar"
             >
@@ -310,7 +315,7 @@ export function Sidebar() {
                 <p className="truncate text-xs font-semibold text-foreground">
                   {userName}
                 </p>
-                <p className="truncate text-[10px] text-muted-foreground">
+                <p className="truncate text-[10px] text-muted-foreground font-mono">
                   {userRole}
                 </p>
               </div>

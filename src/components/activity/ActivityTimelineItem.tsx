@@ -77,7 +77,7 @@ export function ActivityTimelineItem({ item, isLast = false }: ActivityTimelineI
 
       {/* Main Event Content Container */}
       <div className="min-w-0 flex-1 pb-6">
-        <div className="rounded-xl border border-border/50 bg-card/60 p-3 sm:p-3.5 transition-all group-hover:border-border/80 group-hover:bg-card/85 group-hover:shadow-xs">
+        <div className="rounded-lg border border-border bg-card p-3 sm:p-3.5 transition-all group-hover:border-border-strong group-hover:shadow-2xs">
           {/* Top Line: Actor + Action + Entity */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5 text-xs sm:text-sm">

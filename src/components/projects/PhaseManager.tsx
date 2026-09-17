@@ -199,13 +199,13 @@ export function PhaseManager({
       </div>
 
       {sortedPhases.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border/80 p-8 text-center space-y-3">
+        <div className="rounded-lg border border-dashed border-border/80 p-8 text-center space-y-3">
           <Layers className="h-8 w-8 text-muted-foreground/40 mx-auto" />
           <h4 className="text-xs font-semibold text-foreground">No phases configured</h4>
           <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
             Organize work into structured delivery milestones (e.g. Planning, UI/UX, Development).
           </p>
-          <Button size="sm" variant="outline" onClick={handleOpenAdd} className="h-7 text-xs">
+          <Button size="sm" variant="outline" onClick={handleOpenAdd} className="h-7 text-xs cursor-pointer">
             Create First Phase
           </Button>
         </div>
@@ -219,7 +219,7 @@ export function PhaseManager({
             return (
               <div
                 key={phase.id}
-                className="group rounded-xl border border-border/70 bg-card p-4 space-y-3.5 transition-all hover:border-primary/40 hover:shadow-xs"
+                className="group rounded-lg border border-border/70 bg-card p-4 space-y-3.5 transition-all hover:border-border-strong hover:shadow-2xs"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
@@ -295,7 +295,7 @@ export function PhaseManager({
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="fixed inset-0" onClick={() => setIsAddModalOpen(false)} />
-          <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl z-10 space-y-4">
+          <div className="relative w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl z-10 space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h3 className="text-sm font-bold text-foreground">
                 {editingPhase ? "Edit Project Phase" : "Create New Phase"}
@@ -317,7 +317,7 @@ export function PhaseManager({
                   placeholder="e.g. Architecture Blueprint"
                   value={phaseName}
                   onChange={(e) => setPhaseName(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
+                  className="w-full rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden"
                 />
               </div>
 
@@ -328,7 +328,7 @@ export function PhaseManager({
                   placeholder="Scope deliverables and objectives for this phase..."
                   value={phaseDesc}
                   onChange={(e) => setPhaseDesc(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden resize-none"
+                  className="w-full rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden resize-none"
                 />
               </div>
 

@@ -43,7 +43,7 @@ export function ActivityFilterToolbar({
   ];
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/60 p-3 sm:p-4 shadow-xs">
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 sm:p-4 shadow-2xs">
       {/* Top Row: Search and Dropdowns */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         {/* Search Input */}
@@ -54,7 +54,7 @@ export function ActivityFilterToolbar({
             placeholder="Search by entity, actor, or action..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full h-9 rounded-xl border border-border/70 bg-background/80 pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+            className="w-full h-8.5 rounded-md border border-border bg-surface-muted pl-9 pr-8 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
           />
           {search && (
             <button
@@ -74,7 +74,7 @@ export function ActivityFilterToolbar({
             <select
               value={selectedActorId}
               onChange={(e) => onActorChange(e.target.value)}
-              className="w-full h-9 rounded-xl border border-border/70 bg-background/80 pl-8 pr-7 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all appearance-none cursor-pointer"
+              className="w-full h-8.5 rounded-md border border-border bg-surface-muted pl-8 pr-7 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all appearance-none cursor-pointer"
             >
               <option value="all">All Team Members</option>
               {members.map((member) => (
@@ -93,7 +93,7 @@ export function ActivityFilterToolbar({
             <select
               value={selectedProjectId}
               onChange={(e) => onProjectChange(e.target.value)}
-              className="w-full h-9 rounded-xl border border-border/70 bg-background/80 pl-8 pr-7 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all appearance-none cursor-pointer"
+              className="w-full h-8.5 rounded-md border border-border bg-surface-muted pl-8 pr-7 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all appearance-none cursor-pointer"
             >
               <option value="all">All Projects</option>
               {projects.map((proj) => (
@@ -111,25 +111,26 @@ export function ActivityFilterToolbar({
             variant="ghost"
             size="sm"
             onClick={onResetFilters}
-            className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground shrink-0 gap-1.5"
+            className="h-8.5 px-3 text-xs gap-1.5 text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
           >
             <RotateCcw className="h-3 w-3" />
-            <span className="hidden sm:inline">Reset</span>
+            <span>Reset</span>
           </Button>
         )}
       </div>
 
-      {/* Bottom Row: Entity Filter Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar border-t border-border/40 pt-2.5">
+      {/* Bottom Row: Entity Type Quick Filters */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pt-1 border-t border-border/40 scrollbar-none">
+        <span className="text-[11px] font-mono text-muted-foreground mr-1 shrink-0">Filter:</span>
         {entityTypeOptions.map((opt) => (
           <button
             key={opt.value}
             onClick={() => onEntityTypeChange(opt.value)}
             className={cn(
-              "rounded-lg px-2.5 py-1 text-xs font-medium transition-all whitespace-nowrap",
+              "rounded-md px-2.5 py-1 text-xs font-medium transition-all whitespace-nowrap cursor-pointer",
               selectedEntityType === opt.value
                 ? "bg-primary text-primary-foreground shadow-xs font-semibold"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                : "bg-surface-muted/60 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
             )}
           >
             {opt.label}

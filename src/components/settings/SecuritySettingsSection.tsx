@@ -72,7 +72,7 @@ export function SecuritySettingsSection() {
   return (
     <div className="space-y-6">
       {/* Identity & Authentication Card */}
-      <div className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5">
+      <div className="rounded-lg border border-border bg-card p-5 sm:p-6 space-y-5">
         <div className="flex items-center gap-2.5 border-b border-border pb-4">
           <div className="rounded-lg bg-primary/10 p-2 text-primary">
             <KeyRound className="h-4 w-4" />
@@ -131,7 +131,7 @@ export function SecuritySettingsSection() {
       </div>
 
       {/* Active Sessions Telemetry Card */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <Laptop className="h-4 w-4 text-primary" />

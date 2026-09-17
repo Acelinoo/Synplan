@@ -85,16 +85,16 @@ export function ProjectBoardView({
         return (
           <div
             key={col.status}
-            className="flex h-full min-w-[270px] max-w-[310px] flex-1 flex-col rounded-xl border border-border/70 bg-surface-muted/50 p-3 shadow-inner"
+            className="flex h-full min-w-[270px] max-w-[310px] flex-1 flex-col rounded-lg border border-border bg-surface-muted/30 p-2.5"
           >
             {/* Column Header */}
-            <div className="flex items-center justify-between pb-2.5 px-1 border-b border-border/50">
+            <div className="flex items-center justify-between pb-2 px-1 border-b border-border/60">
               <div className="flex items-center gap-2">
-                <span className={cn("h-2.5 w-2.5 rounded-full", col.dotColor)} aria-hidden="true" />
-                <h3 className="text-xs font-bold text-foreground tracking-wide uppercase">
+                <span className={cn("h-2 w-2 rounded-full", col.dotColor)} aria-hidden="true" />
+                <h3 className="text-xs font-bold text-foreground tracking-wider uppercase font-mono">
                   {col.title}
                 </h3>
-                <span className="rounded-full bg-card border border-border px-1.5 py-0.2 text-[10px] font-mono font-bold text-muted-foreground">
+                <span className="rounded-sm bg-surface border border-border px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground">
                   {tasksList.length}
                 </span>
               </div>

@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { FolderKanban } from "lucide-react";
+import { FolderKanban, Clock, Ban, Users2, CheckCircle2 } from "lucide-react";
 import { CountUp } from "@/components/ui/count-up";
 import { apiClient } from "@/lib/apiClient";
 import { useWorkspaceStore } from "@/store";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import { cn } from "@/lib/utils";
 
 export function KpiSummaryGrid() {
   const { activeWorkspace, projects, members, isWorkspaceValidated } = useWorkspaceStore();
@@ -17,8 +18,10 @@ export function KpiSummaryGrid() {
     totalProjects: 0,
     activeProjects: 0,
     tasksDueCount: 0,
+    overdueTasks: 0,
+    blockedTasks: 0,
     teamMembersCount: 0,
-    completedThisWeek: 0,
+    completedTasks: 0,
     velocityRate: 0,
     totalTasks: 0,
   });
@@ -37,11 +40,13 @@ export function KpiSummaryGrid() {
         if (!isMounted) return;
         if (res.success && res.data) {
           setSummary({
-            totalProjects: res.data.totalProjects ?? 0,
+            totalProjects: res.data.totalProjects ?? projects.length,
             activeProjects: res.data.activeProjects ?? 0,
             tasksDueCount: res.data.tasksDueCount ?? res.data.activeTasks ?? 0,
+            overdueTasks: res.data.overdueTasks ?? 0,
+            blockedTasks: res.data.blockedTasks ?? 0,
             teamMembersCount: res.data.teamMembersCount ?? members.length ?? 1,
-            completedThisWeek: res.data.completedThisWeek ?? res.data.completedTasks ?? 0,
+            completedTasks: res.data.completedTasks ?? 0,
             velocityRate: res.data.velocityRate ?? 0,
             totalTasks: res.data.totalTasks ?? 0,
           });
@@ -62,7 +67,7 @@ export function KpiSummaryGrid() {
     };
   }, [activeWorkspace?.id, isWorkspaceValidated, projects.length, members.length]);
 
-  // --- Realtime KPI Live Synchronization ---
+  // Realtime KPI Live Synchronization
   React.useEffect(() => {
     const unsubProjCreate = onEvent("PROJECT_CREATED", () => {
       setSummary((prev) => ({
@@ -82,11 +87,11 @@ export function KpiSummaryGrid() {
 
     const unsubTaskCreate = onEvent("TASK_CREATED", (event) => {
       const task = event.payload;
-      const isDueSoon = Boolean(task?.dueDate);
+      const isDue = Boolean(task?.dueDate);
       setSummary((prev) => ({
         ...prev,
         totalTasks: prev.totalTasks + 1,
-        tasksDueCount: isDueSoon ? prev.tasksDueCount + 1 : prev.tasksDueCount,
+        tasksDueCount: isDue ? prev.tasksDueCount + 1 : prev.tasksDueCount,
       }));
     });
 
@@ -94,27 +99,25 @@ export function KpiSummaryGrid() {
       const { newStatus, previousStatus } = event.payload || {};
       const isNewDone = newStatus?.toLowerCase() === "done";
       const isPrevDone = previousStatus?.toLowerCase() === "done";
+      const isNewBlocked = newStatus?.toLowerCase() === "blocked";
+      const isPrevBlocked = previousStatus?.toLowerCase() === "blocked";
 
       setSummary((prev) => {
-        let completedChange = 0;
-        let dueChange = 0;
-        if (isNewDone && !isPrevDone) {
-          completedChange = 1;
-          dueChange = -1;
-        } else if (!isNewDone && isPrevDone) {
-          completedChange = -1;
-          dueChange = 1;
-        }
+        let completedDelta = 0;
+        if (isNewDone && !isPrevDone) completedDelta = 1;
+        else if (!isNewDone && isPrevDone) completedDelta = -1;
 
-        const newCompleted = Math.max(0, prev.completedThisWeek + completedChange);
-        const newDue = Math.max(0, prev.tasksDueCount + dueChange);
-        const newVelocity = prev.totalTasks > 0 ? Math.round((newCompleted / prev.totalTasks) * 100 * 10) / 10 : prev.velocityRate;
+        let blockedDelta = 0;
+        if (isNewBlocked && !isPrevBlocked) blockedDelta = 1;
+        else if (!isNewBlocked && isPrevBlocked) blockedDelta = -1;
+
+        const newCompleted = Math.max(0, prev.completedTasks + completedDelta);
+        const newBlocked = Math.max(0, prev.blockedTasks + blockedDelta);
 
         return {
           ...prev,
-          completedThisWeek: newCompleted,
-          tasksDueCount: newDue,
-          velocityRate: newVelocity,
+          completedTasks: newCompleted,
+          blockedTasks: newBlocked,
         };
       });
     });
@@ -123,7 +126,6 @@ export function KpiSummaryGrid() {
       setSummary((prev) => ({
         ...prev,
         totalTasks: Math.max(0, prev.totalTasks - 1),
-        tasksDueCount: Math.max(0, prev.tasksDueCount - 1),
       }));
     });
 
@@ -137,101 +139,117 @@ export function KpiSummaryGrid() {
   }, [onEvent]);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
       {/* 1. Active Projects */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+      <div className="rounded-lg border border-border bg-card p-4 shadow-2xs flex flex-col justify-between min-h-[110px] transition-colors hover:border-border-strong">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Active Projects</span>
-          <FolderKanban className="h-4 w-4 text-foreground/70" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-mono">
+            Active Projects
+          </span>
+          <FolderKanban className="h-3.5 w-3.5 text-primary" />
         </div>
-        <div className="mt-3">
+        <div className="mt-2">
           {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-16 rounded" />
-              <Skeleton className="h-3 w-28 rounded" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-7 w-14 rounded" />
+              <Skeleton className="h-3 w-24 rounded" />
             </div>
           ) : (
             <>
-              <div className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-                <CountUp value={summary.activeProjects || 12} duration={800} />
+              <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
+                <CountUp value={summary.activeProjects} duration={600} />
               </div>
-              <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">
-                {summary.totalProjects > summary.activeProjects
-                  ? `${summary.totalProjects - summary.activeProjects} projects starting soon`
-                  : "2 projects starting soon"}
+              <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
+                {summary.totalProjects} total in workspace
               </p>
             </>
           )}
         </div>
       </div>
 
-      {/* 2. Tasks Due Today */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+      {/* 2. Scheduled Work */}
+      <div className="rounded-lg border border-border bg-card p-4 shadow-2xs flex flex-col justify-between min-h-[110px] transition-colors hover:border-border-strong">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Tasks Due Today</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-mono">
+            Scheduled Tasks
+          </span>
+          <Clock className="h-3.5 w-3.5 text-primary" />
         </div>
-        <div className="mt-3">
+        <div className="mt-2">
           {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-16 rounded" />
-              <Skeleton className="h-3 w-28 rounded" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-7 w-14 rounded" />
+              <Skeleton className="h-3 w-24 rounded" />
             </div>
           ) : (
             <>
-              <div className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-                <CountUp value={summary.tasksDueCount || 8} duration={800} />
+              <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
+                <CountUp value={summary.tasksDueCount} duration={600} />
               </div>
-              <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">
-                3 marked high priority
+              <p className={cn(
+                "text-[11px] mt-0.5 font-mono",
+                summary.overdueTasks > 0 ? "text-destructive font-semibold" : "text-muted-foreground"
+              )}>
+                {summary.overdueTasks > 0
+                  ? `${summary.overdueTasks} overdue`
+                  : "All on schedule"}
               </p>
             </>
           )}
         </div>
       </div>
 
-      {/* 3. Team Members */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+      {/* 3. Blocked Work */}
+      <div className="rounded-lg border border-border bg-card p-4 shadow-2xs flex flex-col justify-between min-h-[110px] transition-colors hover:border-border-strong">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Team Members</span>
-          <span className="h-2 w-2 rounded-full bg-muted-foreground/60" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-mono">
+            Blocked Work
+          </span>
+          <Ban className={cn("h-3.5 w-3.5", summary.blockedTasks > 0 ? "text-destructive" : "text-muted-foreground")} />
         </div>
-        <div className="mt-3">
+        <div className="mt-2">
           {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-16 rounded" />
-              <Skeleton className="h-3 w-28 rounded" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-7 w-14 rounded" />
+              <Skeleton className="h-3 w-24 rounded" />
             </div>
           ) : (
             <>
-              <div className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-                <CountUp value={summary.teamMembersCount || 24} duration={600} />
+              <div className={cn(
+                "text-2xl font-bold font-mono tracking-tight",
+                summary.blockedTasks > 0 ? "text-destructive" : "text-foreground"
+              )}>
+                <CountUp value={summary.blockedTasks} duration={600} />
               </div>
-              <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">
-                4 currently active online
+              <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
+                {summary.blockedTasks > 0 ? "Needs dependency unblocking" : "Zero active blockers"}
               </p>
             </>
           )}
         </div>
       </div>
 
-      {/* 4. Completed This Week */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-xs flex flex-col justify-between min-h-[135px]">
+      {/* 4. Team Capacity */}
+      <div className="rounded-lg border border-border bg-card p-4 shadow-2xs flex flex-col justify-between min-h-[110px] transition-colors hover:border-border-strong">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Completed This Week</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-mono">
+            Team Squad
+          </span>
+          <Users2 className="h-3.5 w-3.5 text-primary" />
         </div>
-        <div className="mt-3">
+        <div className="mt-2">
           {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-16 rounded" />
-              <Skeleton className="h-3 w-28 rounded" />
+            <div className="space-y-1.5">
+              <Skeleton className="h-7 w-14 rounded" />
+              <Skeleton className="h-3 w-24 rounded" />
             </div>
           ) : (
             <>
-              <div className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-                <CountUp value={summary.completedThisWeek || 47} duration={800} />
+              <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
+                <CountUp value={summary.teamMembersCount} duration={600} />
               </div>
-              <p className="text-[11px] sm:text-xs text-muted-foreground mt-1">
-                +12% compared to last week
+              <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
+                Collaborators assigned
               </p>
             </>
           )}

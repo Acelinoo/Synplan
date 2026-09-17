@@ -19,3 +19,4 @@ export * from "./table";
 export * from "./toast";
 export * from "./skeleton";
 export * from "./task-visuals";
+export * from "./card";

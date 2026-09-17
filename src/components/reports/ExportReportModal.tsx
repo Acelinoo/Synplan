@@ -144,7 +144,7 @@ export function ExportReportModal({ isOpen, onClose, dateRange = "30d" }: Export
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
       <div className="fixed inset-0" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-xl border border-border bg-card shadow-2xl overflow-hidden animate-in zoom-in-95">
+      <div className="relative w-full max-w-md rounded-lg border border-border bg-card shadow-xl overflow-hidden animate-in zoom-in-95">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-2.5">

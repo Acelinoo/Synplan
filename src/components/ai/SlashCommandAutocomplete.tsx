@@ -74,7 +74,7 @@ export function SlashCommandAutocomplete({
     <div
       role="listbox"
       aria-label="Slash command suggestions"
-      className="absolute bottom-full left-0 right-0 mb-2 max-h-72 overflow-hidden rounded-2xl border border-border/80 bg-card/95 backdrop-blur-xl shadow-2xl z-50 flex flex-col animate-in fade-in zoom-in-95 duration-150"
+      className="absolute bottom-full left-0 right-0 mb-2 max-h-72 overflow-hidden rounded-lg border border-border bg-card shadow-xl z-50 flex flex-col animate-in fade-in zoom-in-95 duration-150"
     >
       {/* Header bar / Breadcrumb hint */}
       <div className="flex items-center justify-between border-b border-border/50 bg-surface/50 px-3.5 py-1.5 text-[11px] text-muted-foreground">

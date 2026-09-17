@@ -97,7 +97,7 @@ export function ProjectOverview({
       {/* 1. Authoritative Telemetry Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* Metric 1: Completion */}
-        <div className="rounded-xl border border-border bg-card p-3.5 space-y-1.5 shadow-2xs">
+        <div className="rounded-lg border border-border bg-card p-3.5 space-y-1.5 shadow-2xs">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Progress
           </span>
@@ -120,7 +120,7 @@ export function ProjectOverview({
         {/* Metric 2: Blocked Tasks */}
         <div
           onClick={() => onNavigateTab("board")}
-          className="rounded-xl border border-border bg-card p-3.5 space-y-1.5 shadow-2xs cursor-pointer hover:border-border-strong transition-colors"
+          className="rounded-lg border border-border bg-card p-3.5 space-y-1.5 shadow-2xs cursor-pointer hover:border-border-strong transition-colors"
         >
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Blocked Tasks
@@ -141,7 +141,7 @@ export function ProjectOverview({
         </div>
 
         {/* Metric 3: Overdue Tasks */}
-        <div className="rounded-xl border border-border bg-card p-3.5 space-y-1.5 shadow-2xs">
+        <div className="rounded-lg border border-border bg-card p-3.5 space-y-1.5 shadow-2xs">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Overdue Work
           </span>
@@ -159,7 +159,7 @@ export function ProjectOverview({
         </div>
 
         {/* Metric 4: High Priority */}
-        <div className="rounded-xl border border-border bg-card p-3.5 space-y-1.5 shadow-2xs">
+        <div className="rounded-lg border border-border bg-card p-3.5 space-y-1.5 shadow-2xs">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             High Priority
           </span>
@@ -172,7 +172,7 @@ export function ProjectOverview({
         </div>
 
         {/* Metric 5: Unassigned */}
-        <div className="rounded-xl border border-border bg-card p-3.5 space-y-1.5 shadow-2xs col-span-2 sm:col-span-1">
+        <div className="rounded-lg border border-border bg-card p-3.5 space-y-1.5 shadow-2xs col-span-2 sm:col-span-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Unassigned
           </span>
@@ -191,7 +191,7 @@ export function ProjectOverview({
         <div className="lg:col-span-2 space-y-6">
           {/* Blocked Work Alert Queue (if any) */}
           {blockedTasks.length > 0 && (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-destructive font-semibold text-xs">
                   <Ban className="h-4 w-4" />
@@ -224,7 +224,7 @@ export function ProjectOverview({
           )}
 
           {/* Active Work Queue */}
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-2xs">
+          <div className="rounded-lg border border-border bg-card p-4 space-y-3 shadow-2xs">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
                 Active Work Deliverables
@@ -269,7 +269,7 @@ export function ProjectOverview({
           </div>
 
           {/* Upcoming Deadlines */}
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-2xs">
+          <div className="rounded-lg border border-border bg-card p-4 space-y-3 shadow-2xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-primary" />
@@ -311,7 +311,7 @@ export function ProjectOverview({
         {/* Right Column (1 span): Squad Roster & Recent Activity */}
         <div className="space-y-6">
           {/* Team Members Roster */}
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-2xs">
+          <div className="rounded-lg border border-border bg-card p-4 space-y-3 shadow-2xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Users2 className="h-3.5 w-3.5 text-primary" />
@@ -364,7 +364,7 @@ export function ProjectOverview({
           </div>
 
           {/* Recent Activity Feed Preview */}
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-2xs">
+          <div className="rounded-lg border border-border bg-card p-4 space-y-3 shadow-2xs">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Activity className="h-3.5 w-3.5 text-primary" />

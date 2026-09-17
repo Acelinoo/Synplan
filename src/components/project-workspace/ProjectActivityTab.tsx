@@ -17,7 +17,7 @@ export function ProjectActivityTab({
   onRefresh,
 }: ProjectActivityTabProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5 space-y-4 shadow-xs">
+    <div className="rounded-lg border border-border bg-card p-5 space-y-4 shadow-2xs">
       {/* Header */}
       <div className="flex items-center justify-between pb-3 border-b border-border/60">
         <div>

@@ -18,8 +18,8 @@ export default function GlobalError({
     <html lang="en" className="dark">
       <body className="min-h-screen bg-[#081420] text-[#F0F6FC] flex flex-col items-center justify-center p-6 text-center antialiased">
         <div className="relative mb-6">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-red-500/30 bg-red-500/10 text-red-400">
-            <AlertOctagon className="h-8 w-8" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400">
+            <AlertOctagon className="h-7 w-7" />
           </div>
         </div>
 

@@ -58,7 +58,7 @@ export function SharedTaskToolbar({
     (Boolean(filters.projectId) && filters.projectId !== "all");
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-xs">
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-2xs">
       {/* Top row: View Switcher and Search */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* View Switcher: Board | List | Table */}

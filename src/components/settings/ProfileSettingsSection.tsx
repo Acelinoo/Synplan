@@ -130,7 +130,7 @@ export function ProfileSettingsSection() {
   return (
     <div className="space-y-6">
       {/* Profile Form Card */}
-      <div className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-6">
+      <div className="rounded-lg border border-border bg-card p-5 sm:p-6 space-y-6">
         <div className="flex items-center justify-between border-b border-border pb-4">
           <div className="flex items-center gap-2.5">
             <div className="rounded-lg bg-primary/10 p-2 text-primary">
@@ -248,7 +248,7 @@ export function ProfileSettingsSection() {
       </div>
 
       {/* Account Identity & System Metadata */}
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
           System Identity & Security Context
         </h3>

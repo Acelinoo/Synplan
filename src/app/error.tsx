@@ -19,11 +19,10 @@ export default function ErrorBoundary({
 
   return (
     <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center select-none animate-in fade-in zoom-in-95 duration-300">
-      {/* Glow Effect */}
+      {/* Error Icon */}
       <div className="relative mb-6">
-        <div className="absolute -inset-4 bg-destructive/15 rounded-full blur-xl pointer-events-none" />
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-destructive/30 bg-destructive/10 text-destructive shadow-inner">
-          <AlertTriangle className="h-8 w-8" />
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-lg border border-destructive/30 bg-destructive/10 text-destructive">
+          <AlertTriangle className="h-7 w-7" />
         </div>
       </div>
 

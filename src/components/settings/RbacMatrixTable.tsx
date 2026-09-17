@@ -21,7 +21,7 @@ const rbacMatrix: PermissionRow[] = [
 
 export function RbacMatrixTable() {
   return (
-    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+    <div className="rounded-lg border border-border bg-card p-5 space-y-4 shadow-2xs">
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2.5">
           <Shield className="h-4 w-4 text-primary" />
