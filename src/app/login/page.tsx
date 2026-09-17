@@ -134,6 +134,30 @@ function LoginContent() {
             )}
             <span>Continue with GitHub</span>
           </button>
+
+          {/* Quick Dev/Demo Mode Access */}
+          <div className="relative flex py-2 items-center">
+            <div className="flex-grow border-t border-border" />
+            <span className="flex-shrink mx-3 text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-wider">
+              Development & Demo
+            </span>
+            <div className="flex-grow border-t border-border" />
+          </div>
+
+          <button
+            id="dev-login-button"
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                localStorage.removeItem("synplan_active_ws");
+                localStorage.removeItem("synplan_active_workspace");
+              }
+              window.location.href = "/api/auth/login/dev";
+            }}
+            className="group relative flex w-full items-center justify-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-4 py-2.5 text-xs sm:text-sm font-semibold text-primary shadow-2xs transition-all duration-150 hover:bg-primary/15 hover:border-primary hover:shadow-xs active:scale-[0.99] cursor-pointer"
+          >
+            <span>⚡ Masuk Mode Dev (Acelino - Owner)</span>
+          </button>
         </div>
 
         {/* Security & Zero-Password Assurance */}
