@@ -1,7 +1,10 @@
+import { prisma } from "../src/lib/prisma";
+
 async function benchmark() {
   const baseUrl = "http://127.0.0.1:3000";
   const cookie = "synplan_session_token=seed_dev_session_token_acelino_2026";
-  const wsId = "cmu4xlv190007vte4n5vbsxzs";
+  const ws = await prisma.workspace.findFirst();
+  const wsId = ws?.id || "";
 
   const endpoints = [
     { name: "GET /api/auth/session", url: "/api/auth/session" },

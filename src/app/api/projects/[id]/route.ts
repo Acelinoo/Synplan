@@ -181,7 +181,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       await tx.projectMember.deleteMany({ where: { projectId: id } });
       await tx.automationRule.deleteMany({ where: { projectId: id } });
       await tx.project.delete({ where: { id } });
-    });
+    }, { timeout: 15000, maxWait: 10000 });
 
     // Publish server-authoritative realtime event
     await publishWorkspaceEvent(auth, "PROJECT_DELETED", { id }, {

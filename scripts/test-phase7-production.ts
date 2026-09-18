@@ -574,7 +574,7 @@ async function main() {
 
         // 3. Delete parent project
         await tx.project.delete({ where: { id: testProject.id } });
-      });
+      }, { timeout: 15000, maxWait: 10000 });
 
       // Verify project is deleted
       const checkProject = await prisma.project.findUnique({
