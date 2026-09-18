@@ -114,7 +114,7 @@ export async function requireAuthGuard(
     }
 
     // 4. Strict Workspace Membership & Tenant Isolation Guard
-    let member = await prisma.workspaceMember.findUnique({
+    const member = await prisma.workspaceMember.findUnique({
       where: {
         workspaceId_userId: {
           workspaceId,
@@ -126,28 +126,13 @@ export async function requireAuthGuard(
       },
     });
 
-    // Self-healing fallback: if header contained a stale workspace ID from a previous session,
-    // gracefully resolve to the user's primary workspace instead of rejecting with 403.
     if (!member) {
-      const fallbackMembership = await prisma.workspaceMember.findFirst({
-        where: { userId },
-        orderBy: { joinedAt: "asc" },
-        include: {
-          user: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        },
-      });
-
-      if (fallbackMembership) {
-        member = fallbackMembership;
-        workspaceId = fallbackMembership.workspaceId;
-      } else {
-        return {
-          errorResponse: NextResponse.json(
-            { success: false, error: "Forbidden", message: "You are not a member of this workspace" },
-            { status: 403 }
-          ),
-        };
-      }
+      return {
+        errorResponse: NextResponse.json(
+          { success: false, error: "Forbidden", message: "You are not a member of this workspace" },
+          { status: 403 }
+        ),
+      };
     }
 
     // 5. Permission / Role Check

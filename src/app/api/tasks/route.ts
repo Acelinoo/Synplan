@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
     const priorityParam = searchParams.get("priority")?.toUpperCase();
     const assigneeId = searchParams.get("assigneeId");
     const search = searchParams.get("search")?.trim();
+    const sortParam = searchParams.get("sort")?.toLowerCase();
     const viewMode = searchParams.get("view") || searchParams.get("viewMode");
 
     // Parse standardized pagination parameters
@@ -127,7 +128,16 @@ export async function GET(req: NextRequest) {
           select: { id: true, name: true, color: true },
         },
       },
-      orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+      orderBy:
+        sortParam === "deadline" || sortParam === "duedate"
+          ? [{ dueDate: "asc" }, { createdAt: "desc" }]
+          : sortParam === "priority"
+          ? [{ priority: "desc" }, { createdAt: "desc" }]
+          : sortParam === "created"
+          ? [{ createdAt: "desc" }]
+          : sortParam === "updated"
+          ? [{ updatedAt: "desc" }]
+          : [{ order: "asc" }, { createdAt: "desc" }],
       take: pagination.limit,
     };
 

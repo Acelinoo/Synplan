@@ -20,6 +20,7 @@
 
     --surface: #FFFFFF;
     --surface-muted: #F3F4F6;      /* Slate 100 — table headers, muted bands */
+    --surface-raised: #FFFFFF;     /* Raised surface level */
     --surface-elevated: #FFFFFF;   /* Modals, popovers */
 
     --popover: #FFFFFF;
@@ -41,6 +42,11 @@
 
     --destructive: #DC2626;        /* Red 600 */
     --destructive-foreground: #FFFFFF;
+
+    --success: #059669;            /* Emerald 600 */
+    --warning: #D97706;            /* Amber 600 */
+    --danger: #DC2626;             /* Red 600 */
+    --info: #2563EB;               /* Blue 600 */
 
     --border: #E5E7EB;             /* Slate 200 */
     --border-subtle: #F3F4F6;      /* Slate 100 */
@@ -89,6 +95,7 @@
 
     --surface: #111827;
     --surface-muted: #162032;      /* Surface level 2 — muted bands, headers */
+    --surface-raised: #162032;     /* Raised surface level in dark mode */
     --surface-elevated: #1C2638;   /* Surface level 3 — popovers, dialogs */
 
     --popover: #162032;
@@ -110,6 +117,11 @@
 
     --destructive: #EF4444;        /* Red 500 */
     --destructive-foreground: #FFFFFF;
+
+    --success: #10B981;            /* Emerald 500 */
+    --warning: #F59E0B;            /* Amber 500 */
+    --danger: #EF4444;             /* Red 500 */
+    --info: #3B82F6;               /* Cobalt 500 */
 
     --border: #1F2937;             /* Slate 800 */
     --border-subtle: #162032;

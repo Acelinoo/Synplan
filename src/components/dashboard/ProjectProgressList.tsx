@@ -28,7 +28,7 @@ export function ProjectProgressList() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await apiClient.getProjects({ workspaceId: wsId });
+        const res = await apiClient.getProjects({ workspaceId: wsId, limit: 10, sort: "updated" });
         if (!isMounted) return;
         if (res.success && Array.isArray(res.data)) {
           setProjects(res.data);

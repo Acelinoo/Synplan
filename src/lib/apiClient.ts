@@ -124,12 +124,12 @@ export const apiClient = {
   invalidate: (prefix?: string) => invalidateApiCache(prefix),
 
   // Auth
-  async getSession() {
+  async getSession(forceBypass = false) {
     return request<{
       authenticated: boolean;
       user: { id: string; name: string; email: string; avatarUrl: string | null; role: string };
       workspaces: Array<{ id: string; name: string; slug: string; logoUrl: string | null; role: string }>;
-    }>("/api/auth/session", undefined, { bypassCache: true });
+    }>("/api/auth/session", undefined, { bypassCache: forceBypass, ttlMs: forceBypass ? 0 : 5000 });
   },
   async logout() {
     const res = await request<{ success: boolean; message: string }>("/api/auth/logout", {
@@ -310,6 +310,7 @@ export const apiClient = {
       assigneeId?: string;
       search?: string;
       view?: string;
+      sort?: string;
       page?: number;
       limit?: number;
       cursor?: string;
@@ -325,6 +326,7 @@ export const apiClient = {
     if (params?.assigneeId) search.set("assigneeId", params.assigneeId);
     if (params?.search) search.set("search", params.search);
     if (params?.view) search.set("view", params.view);
+    if (params?.sort) search.set("sort", params.sort);
     if (params?.page) search.set("page", params.page.toString());
     if (params?.limit) search.set("limit", params.limit.toString());
     if (params?.cursor) search.set("cursor", params.cursor);

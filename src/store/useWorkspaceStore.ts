@@ -58,7 +58,7 @@ const getInitialWorkspace = (): Workspace | null => {
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   activeWorkspace: getInitialWorkspace(),
-  isWorkspaceValidated: false,
+  isWorkspaceValidated: !!getInitialWorkspace(),
   currentUser: null,
   workspaces: [],
   activeProject: null,

@@ -27,6 +27,7 @@ module.exports = {
           DEFAULT: "var(--surface)",
           foreground: "var(--card-foreground)",
           muted: "var(--surface-muted)",
+          raised: "var(--surface-raised)",
           elevated: "var(--surface-elevated)",
         },
         popover: {
@@ -54,6 +55,22 @@ module.exports = {
         destructive: {
           DEFAULT: "var(--destructive)",
           foreground: "var(--destructive-foreground)",
+        },
+        success: {
+          DEFAULT: "var(--success)",
+          foreground: "#FFFFFF",
+        },
+        warning: {
+          DEFAULT: "var(--warning)",
+          foreground: "#FFFFFF",
+        },
+        danger: {
+          DEFAULT: "var(--danger)",
+          foreground: "#FFFFFF",
+        },
+        info: {
+          DEFAULT: "var(--info)",
+          foreground: "#FFFFFF",
         },
         border: {
           DEFAULT: "var(--border)",

@@ -36,7 +36,7 @@ export function UpcomingDeadlinesWidget() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await apiClient.getTasks({ workspaceId: wsId });
+        const res = await apiClient.getTasks({ workspaceId: wsId, limit: 10, sort: "deadline" });
         if (!isMounted) return;
         if (res.success && Array.isArray(res.data)) {
           const mapped = res.data.map((t: any) => ({

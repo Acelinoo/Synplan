@@ -141,41 +141,43 @@ export default function ProjectWorkspacePage() {
     }
   }, [projectId, activeWorkspace?.id]);
 
-  // 3. Fetch View-Specific Task Data
-  const loadTasksForView = React.useCallback(async () => {
+  // 3. Fetch View-Specific Task Data (only for current active view)
+  const loadTasksForView = React.useCallback(async (targetView?: ProjectViewMode) => {
     if (!projectId) return;
+    const viewToLoad = targetView || taskViewMode;
     try {
-      const [bRes, lRes, tRes] = await Promise.all([
-        apiClient.getTasks({
+      if (viewToLoad === "board") {
+        const bRes = await apiClient.getTasks({
           workspaceId: activeWorkspace?.id,
           projectId,
           view: "board",
-        }),
-        apiClient.getTasks({
+        });
+        if (bRes.success && bRes.data) {
+          setBoardData(bRes.data);
+        }
+      } else if (viewToLoad === "list") {
+        const lRes = await apiClient.getTasks({
           workspaceId: activeWorkspace?.id,
           projectId,
           view: "list",
-        }),
-        apiClient.getTasks({
+        });
+        if (lRes.success && lRes.data) {
+          setListData(lRes.data);
+        }
+      } else if (viewToLoad === "table") {
+        const tRes = await apiClient.getTasks({
           workspaceId: activeWorkspace?.id,
           projectId,
           view: "table",
-        }),
-      ]);
-
-      if (bRes.success && bRes.data) {
-        setBoardData(bRes.data);
-      }
-      if (lRes.success && lRes.data) {
-        setListData(lRes.data);
-      }
-      if (tRes.success && Array.isArray(tRes.data)) {
-        setTableTasks(tRes.data);
+        });
+        if (tRes.success && Array.isArray(tRes.data)) {
+          setTableTasks(tRes.data);
+        }
       }
     } catch (err) {
       console.warn("Failed to fetch task views:", err);
     }
-  }, [projectId, activeWorkspace?.id]);
+  }, [projectId, activeWorkspace?.id, taskViewMode]);
 
   // 4. Fetch Project Activity
   const loadProjectActivity = React.useCallback(async () => {
@@ -217,31 +219,46 @@ export default function ProjectWorkspacePage() {
       loadProject(),
       loadHealthSignals(),
       loadTasksForView(),
-      loadProjectActivity(),
-      loadProjectMembers(),
+      activeTab === "activity" ? loadProjectActivity() : Promise.resolve(),
+      activeTab === "members" ? loadProjectMembers() : Promise.resolve(),
     ]);
     setIsRefreshing(false);
-  }, [loadProject, loadHealthSignals, loadTasksForView, loadProjectActivity, loadProjectMembers]);
+  }, [loadProject, loadHealthSignals, loadTasksForView, loadProjectActivity, loadProjectMembers, activeTab]);
 
-  // Initial Workspace Boot
+  // Initial Fast Shell Boot: P0 Critical Data First
   React.useEffect(() => {
     let mounted = true;
     async function boot() {
       setIsLoading(true);
+      // P0: Render Project shell & health immediately
       await Promise.all([
         loadProject(),
         loadHealthSignals(),
-        loadTasksForView(),
-        loadProjectActivity(),
-        loadProjectMembers(),
       ]);
-      if (mounted) setIsLoading(false);
+      if (mounted) {
+        setIsLoading(false);
+        // P1: Progressive background fetch for secondary tabs
+        loadTasksForView();
+        loadProjectActivity();
+        loadProjectMembers();
+      }
     }
     boot();
     return () => {
       mounted = false;
     };
   }, [loadProject, loadHealthSignals, loadTasksForView, loadProjectActivity, loadProjectMembers]);
+
+  // When task view mode or active tab changes, fetch relevant view data if needed
+  React.useEffect(() => {
+    if (activeTab === "tasks") {
+      loadTasksForView(taskViewMode);
+    } else if (activeTab === "activity") {
+      loadProjectActivity();
+    } else if (activeTab === "members") {
+      loadProjectMembers();
+    }
+  }, [activeTab, taskViewMode, loadTasksForView, loadProjectActivity, loadProjectMembers]);
 
   // --- Realtime Project Live Synchronization ---
   React.useEffect(() => {
